@@ -1,0 +1,1 @@
+ALTER TYPE "public"."receipt_status" ADD VALUE 'pending' BEFORE 'submitted';

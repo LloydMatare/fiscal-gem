@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FiscalGem
 
-## Getting Started
+FiscalGem is a multi-tenant SaaS for operating Zimbabwe FDMS devices (Fiscal Device Gateway API v7.2). It pairs a Next.js App Router frontend with Clerk auth, Neon Postgres, and Drizzle ORM.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 (App Router)
+- Clerk for authentication and organizations
+- Neon Postgres + Drizzle ORM
+- Tailwind CSS
+
+## Local setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create `.env.local` from `.env.example` and set values:
+
+```bash
+cp .env.example .env.local
+```
+
+3. Run the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Required:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `DATABASE_URL`
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `FDMS_BASE_URL` (test or prod)
+- `FDMS_API_PATH_PREFIX` (verify with the FDMS Swagger)
 
-## Learn More
+Optional:
 
-To learn more about Next.js, take a look at the following resources:
+- `FDMS_CLIENT_CERT_PEM`
+- `FDMS_CLIENT_KEY_PEM`
+- `FDMS_RECEIPT_BASE_URL`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Drizzle
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Generate migrations (once you have a database):
 
-## Deploy on Vercel
+```bash
+drizzle-kit generate
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Apply migrations (use your preferred runner):
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+drizzle-kit migrate
+```
+
+## FDMS integration
+
+The project includes server-side API routes for the public FDMS endpoints:
+
+- `POST /api/fdms/verify-taxpayer`
+- `POST /api/fdms/register-device`
+- `POST /api/fdms/get-server-certificate`
+
+Mutual TLS is required for other FDMS endpoints. Provide PEM certificate and key via env variables to enable mTLS requests in `lib/fdms/client.ts`.
+
+## Notes
+
+- Update `FDMS_API_PATH_PREFIX` to match the API path shown in the FDMS Swagger UI.
+- Replace the demo UI data in dashboard pages with real queries via Drizzle.
