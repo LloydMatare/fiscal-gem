@@ -3,10 +3,10 @@ import { closeFiscalDay } from "@/lib/fdms/services";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const deviceId = params.id;
+    const { id: deviceId } = await params;
     const fiscalDay = await closeFiscalDay(deviceId);
     return NextResponse.json(fiscalDay);
   } catch (error) {
