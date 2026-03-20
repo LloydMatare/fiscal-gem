@@ -118,3 +118,5 @@ export function createFdmsClient(deviceCert: string, deviceKey: string) {
       }),
   };
 }
+
+export const fdmsClient = createFdmsClient("", "");
