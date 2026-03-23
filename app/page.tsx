@@ -108,16 +108,18 @@ export default function Home() {
           </nav>
           <div className="flex items-center gap-3 text-sm">
             <SignedOut>
-              <SignInButton>
-                <button className="rounded-full border border-[#1e1a17]/20 px-4 py-2 font-semibold text-[#1e1a17]">
-                  Sign in
-                </button>
-              </SignInButton>
-              <SignUpButton>
-                <button className="rounded-full bg-[#1e1a17] px-4 py-2 font-semibold text-[#f6f2ea]">
-                  Start free
-                </button>
-              </SignUpButton>
+              <Link
+                href="/sign-in"
+                className="rounded-full border border-[#1e1a17]/20 px-4 py-2 font-semibold text-[#1e1a17]"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/sign-up"
+                className="rounded-full bg-[#1e1a17] px-4 py-2 font-semibold text-[#f6f2ea]"
+              >
+                Start free
+              </Link>
             </SignedOut>
             <SignedIn>
               <Link
@@ -146,16 +148,18 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <SignedOut>
-                <SignUpButton>
-                  <button className="rounded-full bg-[#1e1a17] px-6 py-3 text-sm font-semibold text-[#f6f2ea]">
-                    Launch workspace
-                  </button>
-                </SignUpButton>
-                <SignInButton>
-                  <button className="rounded-full border border-[#1e1a17]/20 px-6 py-3 text-sm font-semibold text-[#1e1a17]">
-                    View demo
-                  </button>
-                </SignInButton>
+                <Link
+                  href="/sign-up"
+                  className="rounded-full bg-[#1e1a17] px-6 py-3 text-sm font-semibold text-[#f6f2ea]"
+                >
+                  Launch workspace
+                </Link>
+                <Link
+                  href="/sign-in"
+                  className="rounded-full border border-[#1e1a17]/20 px-6 py-3 text-sm font-semibold text-[#1e1a17]"
+                >
+                  View demo
+                </Link>
               </SignedOut>
               <SignedIn>
                 <Link
@@ -324,11 +328,12 @@ export default function Home() {
               <p>Support for test and production environments</p>
             </div>
             <SignedOut>
-              <SignUpButton>
-                <button className="mt-8 w-full rounded-full bg-[#1e1a17] px-6 py-3 text-sm font-semibold text-[#f6f2ea]">
-                  Start free trial
-                </button>
-              </SignUpButton>
+              <Link
+                href="/sign-up"
+                className="mt-8 block w-full rounded-full bg-[#1e1a17] px-6 py-3 text-center text-sm font-semibold text-[#f6f2ea]"
+              >
+                Start free trial
+              </Link>
             </SignedOut>
             <SignedIn>
               <Link

@@ -1,9 +1,10 @@
-import { SignUp } from "@clerk/nextjs";
+import { AuthLayout } from "@/components/auth/AuthLayout";
+import { CustomSignUpForm } from "@/components/auth/CustomSignUpForm";
 
 export default function SignUpPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f6f2ea] px-6 py-16">
-      <SignUp />
-    </div>
+    <AuthLayout isSignUp={true}>
+      <CustomSignUpForm />
+    </AuthLayout>
   );
 }

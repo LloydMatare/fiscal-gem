@@ -1,62 +1,63 @@
-const devices = [
-  {
-    id: "187",
-    serial: "ZIMRA-SN: 001",
-    branch: "Harare CBD",
-    status: "Registered",
-    certificate: "Valid until 2026-04-20",
-  },
-  {
-    id: "214",
-    serial: "ZIMRA-SN: 014",
-    branch: "Bulawayo Central",
-    status: "Active",
-    certificate: "Valid until 2026-05-02",
-  },
-];
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/lib/db";
+import { devices, organizations, fiscalDays } from "@/lib/db/schema";
+import { eq, desc } from "drizzle-orm";
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import { NoOrganization } from "@/components/auth/NoOrganization";
+import { DataTable } from "@/components/ui/data-table";
+import { deviceColumns } from "@/components/dashboard/device-columns";
 
-export default function DevicesPage() {
+export default async function DevicesPage() {
+  const { orgId, sessionClaims } = await auth();
+  const isAdmin = (sessionClaims as any)?.metadata?.role === "admin";
+
+  if (!orgId) {
+    return <NoOrganization isAdmin={isAdmin} />;
+  }
+
+  const org = (await db.select().from(organizations).where(eq(organizations.clerkOrgId, orgId))).at(0);
+  if (!org) return <div>Organization sync required.</div>;
+
+  const organizationDevices = await db.select().from(devices).where(eq(devices.organizationId, org.id));
+
+  const devicesWithDay = await Promise.all(organizationDevices.map(async (device) => {
+    const lastDay = (await db.select()
+      .from(fiscalDays)
+      .where(eq(fiscalDays.deviceId, device.id))
+      .orderBy(desc(fiscalDays.openedAt))
+    ).at(0);
+    
+    return {
+      ...device,
+      currentDayStatus: (lastDay?.status === 'open' ? 'open' : 'closed') as "open" | "closed",
+      lastDayNo: lastDay?.fdmsDayNo || null,
+    };
+  }));
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold">Devices</h2>
-          <p className="text-sm text-[#6a5f57]">
+          <h2 className="text-xl font-black text-[#1e1a17]">Devices</h2>
+          <p className="text-sm font-medium text-[#6a5f57]">
             Track device registration, certificates, and branch metadata.
           </p>
         </div>
-        <button className="rounded-full bg-[#1e1a17] px-5 py-2 text-sm font-semibold text-[#f6f2ea]">
+        <Link 
+          href="/devices/new"
+          className="flex items-center gap-2 rounded-full bg-[#1e1a17] px-5 py-2.5 text-sm font-bold text-[#f6f2ea] hover:bg-black transition-all shadow-md active:scale-95"
+        >
+          <Plus className="h-4 w-4" />
           Register device
-        </button>
+        </Link>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-[#1e1a17]/10 bg-white/80">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-[#1e1a17]/10 text-xs uppercase tracking-[0.2em] text-[#6a5f57]">
-            <tr>
-              <th className="px-6 py-4">Device</th>
-              <th className="px-6 py-4">Branch</th>
-              <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4">Certificate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {devices.map((device) => (
-              <tr key={device.id} className="border-b border-[#1e1a17]/5">
-                <td className="px-6 py-4">
-                  <p className="font-semibold">{device.serial}</p>
-                  <p className="text-xs text-[#6a5f57]">Device ID {device.id}</p>
-                </td>
-                <td className="px-6 py-4 text-[#463f3a]">{device.branch}</td>
-                <td className="px-6 py-4 text-[#2a6f67]">{device.status}</td>
-                <td className="px-6 py-4 text-[#463f3a]">
-                  {device.certificate}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable 
+        columns={deviceColumns} 
+        data={devicesWithDay} 
+        searchKey="serialNumber" 
+      />
     </div>
   );
 }

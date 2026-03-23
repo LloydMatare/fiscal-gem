@@ -1,18 +1,19 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Re-defining isPublicRoute to extract the public paths as strings.
-// This is done to be compatible with `publicRoutes` option of `clerkMiddleware`.
-const publicRoutesArray = [
+const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/sso-callback(.*)",
   "/api/fdms/verify-taxpayer",
   "/api/fdms/register-device",
   "/api/fdms/get-server-certificate",
-];
+]);
 
-export default clerkMiddleware({
-  publicRoutes: publicRoutesArray
+export default clerkMiddleware(async (auth, request) => {
+  if (!isPublicRoute(request)) {
+    await auth.protect();
+  }
 });
 
 export const config = {

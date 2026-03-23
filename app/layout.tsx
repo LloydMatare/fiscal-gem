@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ClerkProvider } from "@clerk/nextjs";
 import { MultisessionAppSupport } from "./components/MultisessionAppSupport";
+import { Toaster } from "sonner";
 
 const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
@@ -17,7 +18,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FiscalGem | FDMS Gateway SaaS",
+  title: "Fiscal Gem | FDMS Gateway SaaS",
   description:
     "Operate ZIMRA FDMS devices with real-time status, receipt submission, and compliance workflows.",
 };
@@ -33,6 +34,7 @@ export default function RootLayout({
         <ClerkProvider afterMultiSessionSingleSignOutUrl="/">
           <MultisessionAppSupport>{children}</MultisessionAppSupport>
         </ClerkProvider>
+        <Toaster />
       </body>
     </html>
   );

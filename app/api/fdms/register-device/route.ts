@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { fdmsClient } from "@/lib/fdms/client";
+import { createFdmsClient } from "@/lib/fdms/client";
 import type { RegisterDeviceResponse } from "@/lib/fdms/types";
 
 export const runtime = "nodejs";
@@ -13,6 +13,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   const payload = schema.parse(await request.json());
-  const data = await fdmsClient.registerDevice<RegisterDeviceResponse>(payload);
+  const client = createFdmsClient("", "", payload.deviceID.toString());
+  const data = await client.registerDevice<RegisterDeviceResponse>(payload);
   return NextResponse.json(data);
 }

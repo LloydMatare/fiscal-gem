@@ -2,9 +2,6 @@ import forge from "node-forge";
 import crypto from "crypto";
 
 const ENCRYPTION_KEY = process.env.FDMS_ENCRYPTION_KEY;
-if (!ENCRYPTION_KEY) {
-  throw new Error("FDMS_ENCRYPTION_KEY is not set");
-}
 
 /**
  * Generates an RSA key pair (private and public key).
@@ -15,7 +12,8 @@ export async function generateKeyPair(): Promise<{
   privateKey: string;
 }> {
   return new Promise((resolve, reject) => {
-    forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 }, (err, keypair) => {
+    // Using 0 workers (synchronous) for more reliable behavior in some environments
+    forge.pki.rsa.generateKeyPair({ bits: 2048, workers: 0 }, (err, keypair) => {
       if (err) {
         return reject(err);
       }
@@ -30,19 +28,29 @@ export async function generateKeyPair(): Promise<{
 
 /**
  * Generates a Certificate Signing Request (CSR).
- * @param {string} commonName The common name for the CSR (e.g., ZIMRA-SN001-12345).
+ * @param {string} deviceId The zero-padded 10-digit device ID.
+ * @param {string} serialNumber The manufacturer serial number.
  * @param {string} privateKeyPem The private key in PEM format.
  * @returns {string} The generated CSR in PEM format.
  */
-export function generateCsr(commonName: string, privateKeyPem: string): string {
-  const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
+export function generateCsr(deviceId: string, serialNumber: string, privateKeyPem: string): string {
+  const privateKey = forge.pki.privateKeyFromPem(privateKeyPem) as forge.pki.rsa.PrivateKey;
+  
+  // Create public key from private key if needed, or ensure it's available
+  // node-forge's privateKeyFromPem might not always populate the publicKey property perfectly
+  // if the PEM only contains the private part.
+  const publicKey = forge.pki.setRsaPublicKey(privateKey.n, privateKey.e);
+
+  const commonName = `ZIMRA-${serialNumber}-${deviceId.padStart(10, '0')}`;
 
   const csr = forge.pki.createCertificationRequest();
-  csr.publicKey = privateKey.publicKey;
-  csr.setSubject([{
-    name: 'commonName',
-    value: commonName
-  }]);
+  csr.publicKey = publicKey;
+  csr.setSubject([
+    { name: 'commonName', value: commonName },
+    { name: 'countryName', value: 'ZW' },
+    { name: 'organizationName', value: 'Zimbabwe Revenue Authority' },
+    { name: 'stateOrProvinceName', value: 'Zimbabwe' }
+  ]);
 
   // Sign CSR with private key
   csr.sign(privateKey, forge.md.sha256.create());
@@ -51,12 +59,12 @@ export function generateCsr(commonName: string, privateKeyPem: string): string {
 }
 
 /**
- * Generates a SHA-256 hash of the input string.
+ * Generates a SHA-256 hash of the input string and returns it in Base64.
  * @param {string} input The string to hash.
- * @returns {string} The hex-encoded hash.
+ * @returns {string} The Base64-encoded hash.
  */
-export function sha256Hash(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex');
+export function sha256HashBase64(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('base64');
 }
 
 /**
@@ -66,7 +74,7 @@ export function sha256Hash(input: string): string {
  * @returns {string} The Base64 encoded signature.
  */
 export function signData(data: string, privateKeyPem: string): string {
-  const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
+  const privateKey = forge.pki.privateKeyFromPem(privateKeyPem) as forge.pki.rsa.PrivateKey;
   const md = forge.md.sha256.create();
   md.update(data, 'utf8');
   const signature = privateKey.sign(md);
@@ -74,58 +82,65 @@ export function signData(data: string, privateKeyPem: string): string {
 }
 
 /**
- * Normalizes receipt data for signing.
- * Concatenates fields strictly (no separators).
- * @param {object} receipt The receipt data.
- * @returns {string} The normalized string.
+ * Formats a percentage for ZIMRA signatures (e.g. 15 -> "15.00").
+ */
+export function formatTaxPercent(percent: number): string {
+  return percent.toFixed(2);
+}
+
+/**
+ * Normalizes receipt data for signing as per ZIMRA v7.2 rules.
  */
 export function normalizeReceiptData(receipt: {
   deviceID: number;
-  type: string;
-  currency: string;
-  globalNo: string;
-  date: string;
-  total: number;
-  taxes: string; // concatenated tax amounts
-  prevHash: string;
+  receiptType: string;
+  receiptCurrency: string;
+  receiptGlobalNo: number;
+  receiptDate: string; // YYYY-MM-DDTHH:mm:ss
+  receiptTotal: number; // in cents
+  taxes: Array<{
+    taxID: number;
+    taxCode: string;
+    taxPercent: number;
+    taxAmount: number; // in cents
+    salesAmountWithTax: number; // in cents
+  }>;
+  previousReceiptHash?: string; // SHA256 (Base64)
 }): string {
-  // Format numbers as per ZIMRA rules (e.g., 15.00 for tax percent)
-  const formattedTotal = (receipt.total / 100).toFixed(2);
-  return `${receipt.deviceID}${receipt.type}${receipt.currency}${receipt.globalNo}${receipt.date}${formattedTotal}${receipt.taxes}${receipt.prevHash}`;
+  // 1. Sort taxes by ID (ascending), then Code (alphabetical)
+  const sortedTaxes = [...receipt.taxes].sort((a, b) => {
+    if (a.taxID !== b.taxID) return a.taxID - b.taxID;
+    return a.taxCode.localeCompare(b.taxCode);
+  });
+
+  // 2. Concatenate tax lines: taxCode || taxPercent || taxAmount || salesAmountWithTax
+  const taxString = sortedTaxes.map(t => 
+    `${t.taxCode}${formatTaxPercent(t.taxPercent)}${t.taxAmount}${t.salesAmountWithTax}`
+  ).join('');
+
+  // 3. Final concatenation: deviceID + type + currency + globalNo + date + total + taxes + prevHash
+  return `${receipt.deviceID}${receipt.receiptType.toUpperCase()}${receipt.receiptCurrency.toUpperCase()}${receipt.receiptGlobalNo}${receipt.receiptDate}${receipt.receiptTotal}${taxString}${receipt.previousReceiptHash || ""}`;
 }
 
 /**
  * Generates receipt signature.
- * @param {object} receipt The receipt data.
- * @param {string} privateKeyPem The private key in PEM format.
- * @returns {string} The Base64 encoded signature.
  */
 export function generateReceiptSignature(
-  receipt: {
-    deviceID: number;
-    type: string;
-    currency: string;
-    globalNo: string;
-    date: string;
-    total: number;
-    taxes: string;
-    prevHash: string;
-  },
+  receipt: Parameters<typeof normalizeReceiptData>[0],
   privateKeyPem: string,
 ): string {
   const normalized = normalizeReceiptData(receipt);
-  const hash = sha256Hash(normalized);
-  return signData(hash, privateKeyPem);
+  // ZIMRA v7.2 says: "Sign the concatenated line"
+  return signData(normalized, privateKeyPem);
 }
 
 /**
  * Encrypts data using AES-256-GCM.
- * @param {string} text The text to encrypt.
- * @returns {string} The encrypted data as hex string (iv + tag + encrypted).
  */
 export function encrypt(text: string): string {
+  if (!ENCRYPTION_KEY) throw new Error("FDMS_ENCRYPTION_KEY is not set");
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY!, 'hex').subarray(0, 32), iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY, 'hex').subarray(0, 32), iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   const tag = cipher.getAuthTag();
@@ -134,15 +149,14 @@ export function encrypt(text: string): string {
 
 /**
  * Decrypts data encrypted with AES-256-GCM.
- * @param {string} encryptedText The encrypted data as hex string (iv + tag + encrypted).
- * @returns {string} The decrypted text.
  */
 export function decrypt(encryptedText: string): string {
+  if (!ENCRYPTION_KEY) throw new Error("FDMS_ENCRYPTION_KEY is not set");
   const parts = encryptedText.split(':');
   const iv = Buffer.from(parts[0], 'hex');
   const tag = Buffer.from(parts[1], 'hex');
   const encrypted = parts[2];
-  const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY!, 'hex').subarray(0, 32), iv);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY, 'hex').subarray(0, 32), iv);
   decipher.setAuthTag(tag);
   let decrypted = decipher.update(encrypted, 'hex', 'utf8');
   decrypted += decipher.final('utf8');

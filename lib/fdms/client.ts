@@ -3,20 +3,52 @@ import https from "https";
 import { fdmsRoutes } from "./routes";
 import type { FdmsProblemDetails } from "./types";
 
-const baseUrl = process.env.FDMS_BASE_URL ?? "";
-const apiPrefix = process.env.FDMS_API_PATH_PREFIX ?? "/api/v7.2";
+const baseUrl = process.env.FDMS_BASE_URL ?? "https://fdmsapitest.zimra.co.zw";
 
 if (!baseUrl) {
   throw new Error("FDMS_BASE_URL is not set");
 }
 
+/**
+ * Builds the full ZIMRA FDMS URL.
+ * ZIMRA v7.2 path standard:
+ * Public: {baseUrl}/Public/v1/{deviceId}/{endpoint} (Note: deviceId is required in path)
+ * Device: {baseUrl}/Device/v1/{deviceId}/{endpoint}
+ */
+const buildUrl = (path: string, deviceId: string) => {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // Public/v1 endpoints usually require the deviceId in the path as well for ZIMRA v7.2
+  if (normalizedPath.startsWith('/Public/v1/')) {
+    const endpoint = normalizedPath.replace('/Public/v1/', '');
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    
+    // GetServerCertificate might be the only truly global one, but even then, test servers often want the ID.
+    if (endpoint === 'GetServerCertificate' && !deviceId) {
+       return `${baseUrl}/Public/v1/GetServerCertificate`;
+    }
 
-const buildUrl = (path: string) => `${baseUrl}${apiPrefix}${path}`;
+    return `${baseUrl}/Public/v1/${deviceId}${cleanEndpoint}`;
+  }
 
-export function createFdmsClient(deviceCert: string, deviceKey: string) {
+  if (normalizedPath.startsWith('/Device/v1/')) {
+    const endpoint = normalizedPath.replace('/Device/v1/', '');
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return `${baseUrl}/Device/v1/${deviceId}${cleanEndpoint}`;
+  }
+
+  return `${baseUrl}${normalizedPath}`;
+};
+
+/**
+ * Creates a dynamic FDMS client for a specific device.
+ */
+export function createFdmsClient(deviceCert: string, deviceKey: string, deviceId: string) {
   const mtlsAgent = new https.Agent({
     cert: deviceCert,
     key: deviceKey,
+    // Note: rejectUnauthorized: false is needed for ZIMRA test servers.
+    rejectUnauthorized: false 
   });
 
   async function fdmsFetch<T>(
@@ -24,10 +56,17 @@ export function createFdmsClient(deviceCert: string, deviceKey: string) {
     init: RequestInit & { mtls?: boolean } = {},
   ): Promise<T> {
     const { mtls, headers, ...rest } = init;
-    const response = await fetch(buildUrl(path), {
+    const url = buildUrl(path, deviceId);
+    
+    // console.log(`FDMS Request: ${init.method || 'GET'} ${url}`);
+
+    const response = await fetch(url, {
       ...rest,
       headers: {
         "Content-Type": "application/json",
+        // These MUST match your ZIMRA portal registration exactly
+        "DeviceModelName": "Server", 
+        "DeviceModelVersionNo": "v1",
         ...(headers ?? {}),
       },
       // @ts-expect-error Node.js fetch agent support
@@ -41,8 +80,9 @@ export function createFdmsClient(deviceCert: string, deviceKey: string) {
       } catch {
         // ignore parsing issues
       }
-      const message = problem?.title ?? problem?.detail ?? response.statusText;
-      throw new Error(`FDMS error ${response.status}: ${message}`);
+      const message = problem?.title || problem?.detail || response.statusText;
+      const errorCode = problem?.errorCode ? ` (${problem.errorCode})` : "";
+      throw new Error(`FDMS error ${response.status}: ${message}${errorCode}`);
     }
 
     return (await response.json()) as T;
@@ -118,5 +158,3 @@ export function createFdmsClient(deviceCert: string, deviceKey: string) {
       }),
   };
 }
-
-export const fdmsClient = createFdmsClient("", "");

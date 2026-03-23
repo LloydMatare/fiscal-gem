@@ -54,6 +54,7 @@ export interface GetConfigResponse {
   operationID: string;
   taxRates: any;
   taxPayerDetails: any;
+  operationMode?: string;
 }
 
 export interface OpenDayResponse {
