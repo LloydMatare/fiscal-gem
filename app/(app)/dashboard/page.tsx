@@ -135,7 +135,7 @@ export default async function DashboardPage() {
           </h2>
           
           <div className="space-y-4 relative z-10">
-            {activeDeviceCount === 0 && (
+            {isAdmin && activeDeviceCount === 0 && (
                <Link href="/devices/new" className="block group/item">
                   <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 transition-all hover:bg-white/10">
                     <p className="text-sm font-bold text-white">Register first device</p>

@@ -282,6 +282,27 @@ export async function submitReceipt(id: string, receiptData: {
   return receipt;
 }
 
+/**
+ * Submits a file payload to ZIMRA for a device.
+ */
+export async function submitFile(id: string, fileType: string, rawContent: string) {
+  const device = (await db.select().from(devices).where(eq(devices.id, id))).at(0);
+  if (!device || !device.certificatePem || !device.privateKey || !device.deviceId) {
+    throw new Error("Device not active");
+  }
+
+  const privateKey = decrypt(device.privateKey);
+  const client = createFdmsClient(device.certificatePem, privateKey, device.deviceId.toString());
+  const fileContent = Buffer.from(rawContent).toString("base64");
+
+  const response: SubmitFileResponse = await client.submitFile({
+    fileType,
+    fileContent,
+  });
+
+  return response;
+}
+
 type StoredReceiptPayload = {
   receiptDeviceSignature?: string;
 };

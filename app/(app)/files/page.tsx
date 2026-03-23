@@ -2,6 +2,10 @@ import { auth } from "@clerk/nextjs/server";
 import { NoOrganization } from "@/components/auth/NoOrganization";
 import { DataTable } from "@/components/ui/data-table";
 import { fileColumns } from "@/components/dashboard/file-columns";
+import { db } from "@/lib/db";
+import { devices, files, organizations } from "@/lib/db/schema";
+import { desc, eq } from "drizzle-orm";
+import { UploadFileDialog } from "./UploadFileDialog";
 
 export default async function FilesPage() {
   const { orgId, sessionClaims } = await auth();
@@ -11,11 +15,41 @@ export default async function FilesPage() {
     return <NoOrganization isAdmin={isAdmin} />;
   }
 
-  // Placeholder for real files fetch - normally these would come from DB
-  const files: any[] = [
-    { name: "fiscal-day-2026-03-15.json", type: "FiscalDayCounters", status: "Completed" },
-    { name: "offline-receipts-2026-03-14.json", type: "OfflineReceipts", status: "Completed" },
-  ];
+  const org = (
+    await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.clerkOrgId, orgId))
+  ).at(0);
+  if (!org) return <div>Organization sync required.</div>;
+
+  const organizationDevices = await db
+    .select({
+      id: devices.id,
+      deviceId: devices.deviceId,
+      serialNumber: devices.serialNumber,
+    })
+    .from(devices)
+    .where(eq(devices.organizationId, org.id));
+
+  const organizationFiles = await db
+    .select({
+      id: files.id,
+      fileName: files.fileName,
+      type: files.type,
+      status: files.status,
+      createdAt: files.createdAt,
+    })
+    .from(files)
+    .innerJoin(devices, eq(files.deviceId, devices.id))
+    .where(eq(devices.organizationId, org.id))
+    .orderBy(desc(files.createdAt));
+
+  const fileRows = organizationFiles.map((file) => ({
+    name: file.fileName ?? "Untitled file",
+    type: file.type,
+    status: file.status,
+  }));
 
   return (
     <div className="space-y-6">
@@ -26,14 +60,12 @@ export default async function FilesPage() {
             Submit batch files and track processing status with FDMS.
           </p>
         </div>
-        <button className="rounded-full bg-[#1e1a17] px-6 py-2.5 text-sm font-bold text-[#f6f2ea] hover:bg-black transition-all shadow-md active:scale-95">
-          Upload file
-        </button>
+        <UploadFileDialog devices={organizationDevices} />
       </div>
 
       <DataTable 
         columns={fileColumns} 
-        data={files} 
+        data={fileRows} 
         searchKey="name" 
       />
     </div>

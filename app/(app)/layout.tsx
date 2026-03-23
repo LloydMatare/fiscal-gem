@@ -10,7 +10,8 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { userId, orgId } = await auth();
+  const { userId, orgId, sessionClaims } = await auth();
+  const isAdmin = (sessionClaims as any)?.metadata?.role === "admin";
 
   if (!userId) {
     redirect("/sign-in");
@@ -35,16 +36,18 @@ export default async function AppLayout({
                 <h1 className="text-lg font-black text-[#1e1a17]">Operations Console</h1>
               </div>
               <div className="h-8 w-px bg-[#1e1a17]/10 hidden sm:block" />
-              <OrganizationSwitcher 
-                afterCreateOrganizationUrl="/dashboard"
-                afterSelectOrganizationUrl="/dashboard"
-                appearance={{
-                  elements: {
-                    rootBox: "flex items-center",
-                    organizationSwitcherTrigger: "rounded-xl border border-[#1e1a17]/10 bg-[#f6f2ea]/50 px-3 py-1.5 text-xs font-bold transition-all hover:bg-[#f6f2ea] focus:shadow-none focus:ring-0",
-                  }
-                }}
-              />
+              {isAdmin && (
+                <OrganizationSwitcher 
+                  afterCreateOrganizationUrl="/dashboard"
+                  afterSelectOrganizationUrl="/dashboard"
+                  appearance={{
+                    elements: {
+                      rootBox: "flex items-center",
+                      organizationSwitcherTrigger: "rounded-xl border border-[#1e1a17]/10 bg-[#f6f2ea]/50 px-3 py-1.5 text-xs font-bold transition-all hover:bg-[#f6f2ea] focus:shadow-none focus:ring-0",
+                    }
+                  }}
+                />
+              )}
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 mr-4 border-r border-[#1e1a17]/10 pr-4">

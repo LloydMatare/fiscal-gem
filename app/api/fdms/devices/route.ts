@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerDevice } from "@/lib/fdms/services";
-import { currentUser } from "@clerk/nextjs/server";
+import { requireOrganizationAdmin } from "@/lib/auth/guards";
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await currentUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Assume organization from user, but for simplicity, use a default or from body
     const body = await request.json();
-    const { organizationId, deviceId, serialNumber, activationKey, branchName, branchAddress, branchContacts } = body;
+    const { deviceId, serialNumber, activationKey, branchName, branchAddress, branchContacts } = body;
 
-    const device = await registerDevice(organizationId, {
+    const { org } = await requireOrganizationAdmin();
+
+    const device = await registerDevice(org.id, {
       deviceId,
       serialNumber,
       activationKey,
@@ -24,7 +20,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(device);
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "Failed to register device" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Failed to register device";
+    const status = message === "Unauthorized" ? 401 : message === "Forbidden" ? 403 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

@@ -44,13 +44,15 @@ export default async function DevicesPage() {
             Track device registration, certificates, and branch metadata.
           </p>
         </div>
-        <Link 
-          href="/devices/new"
-          className="flex items-center gap-2 rounded-full bg-[#1e1a17] px-5 py-2.5 text-sm font-bold text-[#f6f2ea] hover:bg-black transition-all shadow-md active:scale-95"
-        >
-          <Plus className="h-4 w-4" />
-          Register device
-        </Link>
+        {isAdmin && (
+          <Link 
+            href="/devices/new"
+            className="flex items-center gap-2 rounded-full bg-[#1e1a17] px-5 py-2.5 text-sm font-bold text-[#f6f2ea] hover:bg-black transition-all shadow-md active:scale-95"
+          >
+            <Plus className="h-4 w-4" />
+            Register device
+          </Link>
+        )}
       </div>
 
       <DataTable 
