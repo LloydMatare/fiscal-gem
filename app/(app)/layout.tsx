@@ -4,14 +4,15 @@ import { Sidebar } from "./components/Sidebar";
 import {Bell, MessageCircle, Search} from "lucide-react";
 import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
 import { ensureOrganizationAction } from "@/lib/actions/devices";
+import { getAdminStatus } from "@/lib/auth/guards";
 
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { userId, orgId, sessionClaims } = await auth();
-  const isAdmin = (sessionClaims as any)?.metadata?.role === "admin";
+  const { userId, orgId } = await auth();
+  const isAdmin = await getAdminStatus();
 
   if (!userId) {
     redirect("/sign-in");

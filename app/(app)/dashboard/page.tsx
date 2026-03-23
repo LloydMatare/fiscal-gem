@@ -12,10 +12,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { NoOrganization } from "@/components/auth/NoOrganization";
+import { getAdminStatus } from "@/lib/auth/guards";
 
 export default async function DashboardPage() {
-  const { orgId, sessionClaims } = await auth();
-  const isAdmin = (sessionClaims as any)?.metadata?.role === "admin";
+  const { orgId } = await auth();
+  const isAdmin = await getAdminStatus();
 
   if (!orgId) {
     return <NoOrganization isAdmin={isAdmin} />;

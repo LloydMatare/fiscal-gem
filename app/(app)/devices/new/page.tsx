@@ -2,10 +2,11 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { NoOrganization } from "@/components/auth/NoOrganization";
 import NewDeviceForm from "./NewDeviceForm";
+import { getAdminStatus } from "@/lib/auth/guards";
 
 export default async function NewDevicePage() {
-  const { orgId, sessionClaims } = await auth();
-  const isAdmin = (sessionClaims as any)?.metadata?.role === "admin";
+  const { orgId } = await auth();
+  const isAdmin = await getAdminStatus();
 
   if (!isAdmin) {
     redirect("/devices");

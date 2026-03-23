@@ -1,10 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { NoOrganization } from "@/components/auth/NoOrganization";
 import { Settings as SettingsIcon, Save } from "lucide-react";
+import { getAdminStatus } from "@/lib/auth/guards";
 
 export default async function SettingsPage() {
-  const { orgId, sessionClaims } = await auth();
-  const isAdmin = (sessionClaims as any)?.metadata?.role === "admin";
+  const { orgId } = await auth();
+  const isAdmin = await getAdminStatus();
 
   if (!orgId) {
     return <NoOrganization isAdmin={isAdmin} />;

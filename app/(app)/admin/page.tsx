@@ -14,12 +14,13 @@ import {
 } from "lucide-react";
 import { DataTable } from "@/components/ui/data-table";
 import { activityColumns } from "@/components/admin/activity-columns";
+import { getAdminStatus } from "@/lib/auth/guards";
 
 export default async function AdminDashboardPage() {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
   
   // Basic admin check
-  const isAdmin = (sessionClaims as any)?.metadata?.role === "admin";
+  const isAdmin = await getAdminStatus();
   
   if (!isAdmin) {
     redirect("/dashboard");

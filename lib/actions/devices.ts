@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { organizations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { isAdminSession, requireDeviceForOrg } from "@/lib/auth/guards";
+import { getAdminStatus, requireDeviceForOrg } from "@/lib/auth/guards";
 
 /**
  * Ensures an organization exists in our DB based on Clerk's orgId.
@@ -40,9 +40,9 @@ export async function registerDeviceAction(formData: {
   serialNumber: string;
   activationKey: string;
 }) {
-  const { orgId, orgSlug, sessionClaims } = await auth();
+  const { orgId, orgSlug } = await auth();
 
-  if (!isAdminSession(sessionClaims)) {
+  if (!(await getAdminStatus())) {
     throw new Error("Forbidden");
   }
   

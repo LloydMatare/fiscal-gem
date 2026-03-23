@@ -1,10 +1,40 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { devices, organizations } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 
 export function isAdminSession(sessionClaims: unknown) {
-  return (sessionClaims as { metadata?: { role?: string } })?.metadata?.role === "admin";
+  const claims = sessionClaims as {
+    metadata?: { role?: string };
+    publicMetadata?: { role?: string };
+    public_metadata?: { role?: string };
+    org_role?: string;
+    orgRole?: string;
+  };
+
+  const role =
+    claims?.metadata?.role ??
+    claims?.publicMetadata?.role ??
+    claims?.public_metadata?.role;
+
+  const orgRole = claims?.org_role ?? claims?.orgRole;
+
+  return role === "admin" || orgRole === "org:admin";
+}
+
+export async function getAdminStatus() {
+  const { sessionClaims, orgRole } = await auth();
+
+  if (isAdminSession({ ...(sessionClaims as object), orgRole })) {
+    return true;
+  }
+
+  const user = await currentUser();
+  if (user?.publicMetadata?.role === "admin") {
+    return true;
+  }
+
+  return false;
 }
 
 export async function requireAuth() {
@@ -20,7 +50,7 @@ export async function requireAdmin() {
   if (!userId) {
     throw new Error("Unauthorized");
   }
-  if (!isAdminSession(sessionClaims)) {
+  if (!(await getAdminStatus())) {
     throw new Error("Forbidden");
   }
   return { userId, orgId, sessionClaims };
@@ -54,7 +84,7 @@ export async function requireOrganizationAdmin() {
   if (!userId) {
     throw new Error("Unauthorized");
   }
-  if (!isAdminSession(sessionClaims)) {
+  if (!(await getAdminStatus())) {
     throw new Error("Forbidden");
   }
   if (!orgId) {

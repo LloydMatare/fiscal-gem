@@ -6,10 +6,11 @@ import { db } from "@/lib/db";
 import { devices, files, organizations } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { UploadFileDialog } from "./UploadFileDialog";
+import { getAdminStatus } from "@/lib/auth/guards";
 
 export default async function FilesPage() {
-  const { orgId, sessionClaims } = await auth();
-  const isAdmin = (sessionClaims as any)?.metadata?.role === "admin";
+  const { orgId } = await auth();
+  const isAdmin = await getAdminStatus();
 
   if (!orgId) {
     return <NoOrganization isAdmin={isAdmin} />;
