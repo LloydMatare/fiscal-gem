@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { DeviceActions } from "@/components/admin/device-actions";
 import { DeviceStatusButton } from "@/components/admin/device-status-button";
 import { DeviceConfigButton } from "@/components/admin/device-config-button";
+import { DeviceStatusCard } from "@/components/admin/device-status-card";
+import { SubmitReceiptButton } from "@/components/admin/submit-receipt-button";
 
 export default async function DeviceDetailPage({
   params,
@@ -49,9 +51,25 @@ export default async function DeviceDetailPage({
             deviceModelName={device.deviceModelName}
             deviceModelVersion={device.deviceModelVersion}
           />
+          <SubmitReceiptButton
+            clientId={clientId}
+            deviceId={device.deviceId!}
+            deviceModelName={device.deviceModelName}
+            deviceModelVersion={device.deviceModelVersion}
+          />
           <DeviceActions device={device as any} />
         </div>
       </PageHeader>
+      <div className="my-6"/>
+
+      <DeviceStatusCard
+        clientId={clientId}
+        deviceId={device.deviceId!}
+        deviceModelName={device.deviceModelName}
+        deviceModelVersion={device.deviceModelVersion}
+      />
+
+      <div className="my-6"/>
 
       <div className="rounded-md border p-6">
         <h2 className="text-lg font-semibold mb-4">Device Information</h2>
