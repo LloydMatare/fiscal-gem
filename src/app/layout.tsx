@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Fiscal Gem - Fiscalisation Platform",
   description:
-    "Cloud middleware between businesses and ZIMRA Fiscal Device Management System",
+    "Cloud middleware between businesses and ZIMRA Fiscal Device Management System.",
 };
 
 export default function RootLayout({
