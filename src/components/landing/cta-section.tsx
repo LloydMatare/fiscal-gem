@@ -56,7 +56,7 @@ export function CtaSection({ signedIn }: { signedIn: boolean }) {
           </h2>
 
           <p className="text-lg text-muted-foreground max-w-xl mx-auto mb-8">
-            Join businesses already using Fiscal Edge to streamline their
+            Join businesses already using Fiscal Gem to streamline their
             ZIMRA compliance. Get started in minutes.
           </p>
 

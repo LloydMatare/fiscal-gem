@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { receipts } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { receipts, devices } from "@/db/schema";
+import { eq, and, desc } from "drizzle-orm";
 import { apiCreated, apiError } from "@/lib/api-response";
 import { signData, computeReceiptChainHash } from "@/services/signing";
-import { readPrivateKeyPem } from "@/services/certificate";
+import { downloadFileAsText } from "@/services/certificate";
 
 // POST /s2s/receipts - Submit a receipt from an agent
 export async function POST(req: NextRequest) {
@@ -29,7 +29,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Check for duplicate external reference
     const existing = await db.query.receipts.findFirst({
       where: and(
         eq(receipts.clientId, clientId),
@@ -44,33 +43,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Get the last receipt for chain hash
     const lastReceipt = await db.query.receipts.findFirst({
       where: eq(receipts.clientId, clientId),
       orderBy: (receipts, { desc }) => [desc(receipts.receiptGlobalNo)],
     });
 
     const previousReceiptHash = lastReceipt?.fdmsServerSignatureHash || undefined;
+    const chainHash = computeReceiptChainHash(fiscalPayloadJson, previousReceiptHash);
 
-    // Compute chain hash
-    const chainHash = computeReceiptChainHash(
-      fiscalPayloadJson,
-      previousReceiptHash
-    );
-
-    // Sign the receipt if private key is available
     let signedPayloadJson: string | null = null;
     try {
-      const privateKeyPem = await readPrivateKeyPem(clientId, deviceId);
-      const { signature, signatureHash } = signData(
-        fiscalPayloadJson,
-        privateKeyPem
-      );
-      signedPayloadJson = JSON.stringify({
-        signature,
-        signatureHash,
-        chainHash,
+      const device = await db.query.devices.findFirst({
+        where: and(eq(devices.id, deviceId), eq(devices.clientId, clientId)),
       });
+
+      if (device?.keyMaterialUrls) {
+        const urls = JSON.parse(device.keyMaterialUrls);
+        const privateKeyPem = await downloadFileAsText(urls.privateKeyUrl);
+        const { signature, signatureHash } = signData(fiscalPayloadJson, privateKeyPem);
+        signedPayloadJson = JSON.stringify({ signature, signatureHash, chainHash });
+      }
     } catch {
       // Key not found - receipt will be signed later
     }

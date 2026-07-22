@@ -4,7 +4,8 @@ import { devices } from "@/db/schema";
 import { eq, desc, count, and } from "drizzle-orm";
 import { requireAdmin } from "@/lib/tenant";
 import { apiSuccess, apiCreated, apiError, getSearchParams } from "@/lib/api-response";
-import { generateCsr, saveKeyMaterial } from "@/services/certificate";
+import { generateCsr, uploadAllKeyMaterial } from "@/services/certificate";
+import { registerDevice } from "@/integration/zimra/device";
 
 // GET /admin/clients/[clientId]/device
 export async function GET(
@@ -38,7 +39,7 @@ export async function GET(
   }
 }
 
-// POST /admin/clients/[clientId]/device - Register a new device
+// POST /admin/clients/[clientId]/device - Register a new device with ZIMRA
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ clientId: string }> }
@@ -53,13 +54,13 @@ export async function POST(
       serialNumber,
       deviceModelName,
       deviceModelVersion,
-      commonName: providedCn,
+      activationKey,
     } = body;
 
-    if (!zimraDeviceId || !serialNumber) {
+    if (!zimraDeviceId || !serialNumber || !activationKey) {
       return apiError({
         statusCode: 400,
-        message: "deviceId and serialNumber are required",
+        message: "deviceId, serialNumber, and activationKey are required",
       });
     }
 
@@ -77,9 +78,29 @@ export async function POST(
       });
     }
 
+    // 1. Generate EC key pair + CSR
     const csrResult = await generateCsr(zimraDeviceId, serialNumber);
-    await saveKeyMaterial(clientId, zimraDeviceId, csrResult);
 
+    // 2. Call ZIMRA RegisterDevice
+    const zimraResponse = await registerDevice(
+      zimraDeviceId,
+      deviceModelName || "FiscalEdge",
+      deviceModelVersion || "1.0.0",
+      {
+        ActivationKey: activationKey,
+        CertificateRequest: csrResult.csrPem,
+      }
+    );
+
+    // 3. Upload all key material + certificate to UploadThing
+    const urls = await uploadAllKeyMaterial(
+      clientId,
+      zimraDeviceId,
+      csrResult,
+      zimraResponse.certificate
+    );
+
+    // 4. Save device to DB
     const [device] = await db
       .insert(devices)
       .values({
@@ -87,17 +108,24 @@ export async function POST(
         serialNumber,
         deviceModelName,
         deviceModelVersion,
-        commonName: providedCn || csrResult.commonName,
+        activationKey,
+        commonName: csrResult.commonName,
         csr: csrResult.csrPem,
+        certificate: zimraResponse.certificate,
+        registrationResponseJson: JSON.stringify(zimraResponse),
+        keyMaterialUrls: JSON.stringify(urls),
+        activated: true,
         clientId,
-        activated: false,
         createdBy: ctx.userId,
       })
       .returning();
 
     return apiCreated(device);
-  } catch (error) {
-    return apiError(error);
+  } catch (error: any) {
+    return apiError({
+      statusCode: error.status || 500,
+      message: error.message || "Failed to register device",
+    });
   }
 }
 

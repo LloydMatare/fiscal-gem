@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { fiscalDays, devices } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { openDay as fdmsOpenDay, closeDay as fdmsCloseDay, getDeviceStatus, pingDevice } from "@/integration/zimra/device";
-import { readCertificatePem, readPrivateKeyPem } from "@/services/certificate";
+import { downloadFileAsText } from "@/services/certificate";
 
 // POST /s2s/fiscal-day - Open/Close day, get status, ping
 export async function POST(req: NextRequest) {
@@ -19,7 +19,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Resolve the device
     const device = await db.query.devices.findFirst({
       where: and(
         eq(devices.id, deviceId),
@@ -38,16 +37,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Read certificates
-    let certificatePem: string;
+    if (!device.certificate) {
+      return apiError({
+        statusCode: 400,
+        message: "Device certificate not found. Register device first.",
+      });
+    }
+
+    const certificatePem = device.certificate;
+
     let privateKeyPem: string;
     try {
-      certificatePem = await readCertificatePem(clientId, device.deviceId);
-      privateKeyPem = await readPrivateKeyPem(clientId, device.deviceId);
+      if (!device.keyMaterialUrls) {
+        throw new Error("No key material URLs");
+      }
+      const urls = JSON.parse(device.keyMaterialUrls);
+      privateKeyPem = await downloadFileAsText(urls.privateKeyUrl);
     } catch {
       return apiError({
         statusCode: 400,
-        message: "Device certificates not found. Issue certificate first.",
+        message: "Device private key not found. Register device first.",
       });
     }
 
@@ -101,7 +110,6 @@ export async function POST(req: NextRequest) {
           closeRequest
         );
 
-        // Update the fiscal day
         const [updated] = await db
           .update(fiscalDays)
           .set({

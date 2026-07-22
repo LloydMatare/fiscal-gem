@@ -9,7 +9,7 @@ export function Footer() {
             <span className="text-[10px] font-bold text-fedge-cream">FE</span>
           </div>
           <span className="text-sm font-medium text-muted-foreground">
-            Fiscal Edge &copy; {new Date().getFullYear()}
+            Fiscal Gem &copy; {new Date().getFullYear()}
           </span>
         </div>
 

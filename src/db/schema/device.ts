@@ -23,6 +23,7 @@ export const devices = pgTable(
     csr: text("csr"),
     certificate: text("certificate"),
     registrationResponseJson: text("registration_response_json"),
+    keyMaterialUrls: text("key_material_urls"),
     commonName: text("common_name"),
     activated: boolean("activated").default(false),
     clientId: uuid("client_id")

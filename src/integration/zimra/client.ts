@@ -1,4 +1,4 @@
-import tls from "tls";
+import http from "http";
 import https from "https";
 import { FDMS_BASE_URL } from "./config";
 
@@ -9,7 +9,6 @@ export interface MtlsClientOptions {
 
 /**
  * Creates an HTTPS agent with mTLS (mutual TLS) using per-device certificates.
- * This replaces the Spring Boot FdmsMtlsRestClientFactory.
  */
 export function createMtlsAgent(options: MtlsClientOptions): https.Agent {
   return new https.Agent({
@@ -60,8 +59,43 @@ export class FdmsApiException extends Error {
 }
 
 /**
+ * Makes an HTTPS request using Node.js `https.request` (supports mTLS via agent).
+ * Node.js native `fetch()` (undici) ignores the `agent` option, so mTLS requires `https.request`.
+ */
+function httpsRequest(
+  url: URL,
+  options: {
+    method: string;
+    headers: Record<string, string>;
+    agent?: https.Agent;
+    body?: string | Buffer;
+  }
+): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      url.toString(),
+      {
+        method: options.method,
+        headers: options.headers,
+        agent: options.agent,
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () =>
+          resolve({ status: res.statusCode || 0, headers: res.headers, body: data })
+        );
+      }
+    );
+    req.on("error", reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+/**
  * Generic FDMS API client that handles mTLS, error parsing, and response handling.
- * Replaces the Spring Boot RestClient-based FdmsServiceImpl.
+ * Uses `https.request` for mTLS calls (Node.js fetch ignores the agent option).
  */
 export async function fdmsRequest<T>(
   options: FdmsRequestOptions
@@ -100,38 +134,51 @@ export async function fdmsRequest<T>(
     DeviceModelVersion: deviceModelVersion,
   };
 
-  const fetchOptions: RequestInit = {
-    method,
-    headers,
-  };
-
-  // Add mTLS agent if certificates provided
-  if (certificatePem && privateKeyPem) {
-    (fetchOptions as any).agent = createMtlsAgent({
-      certificatePem,
-      privateKeyPem,
-    });
-  }
+  let requestBody: string | Buffer | undefined;
 
   // Add body for POST/PUT/PATCH
   if (body && ["POST", "PUT", "PATCH"].includes(method)) {
     if (contentType === "multipart/form-data" && body instanceof FormData) {
-      fetchOptions.body = body;
+      const buffer = await (body as any).arrayBuffer();
+      requestBody = Buffer.from(buffer);
+      headers["Content-Type"] = contentType;
     } else {
       headers["Content-Type"] = contentType;
-      fetchOptions.body =
-        typeof body === "string" ? body : JSON.stringify(body);
+      requestBody = typeof body === "string" ? body : JSON.stringify(body);
     }
   }
 
-  const response = await fetch(url.toString(), fetchOptions);
+  // Use https.request for mTLS, fetch for non-mTLS
+  let responseStatus: number;
+  let responseHeaders: Record<string, string>;
+  let responseText: string;
 
-  const responseText = await response.text();
+  if (certificatePem && privateKeyPem) {
+    const agent = createMtlsAgent({ certificatePem, privateKeyPem });
+    const result = await httpsRequest(url, {
+      method,
+      headers,
+      agent,
+      body: requestBody,
+    });
+    responseStatus = result.status;
+    responseHeaders = result.headers as Record<string, string>;
+    responseText = result.body;
+  } else {
+    const fetchOptions: RequestInit = { method, headers };
+    if (requestBody) {
+      fetchOptions.body = typeof requestBody === "string" ? requestBody : requestBody.toString();
+    }
+    const response = await fetch(url.toString(), fetchOptions);
+    responseStatus = response.status;
+    responseHeaders = Object.fromEntries(response.headers.entries());
+    responseText = await response.text();
+  }
 
-  if (!response.ok) {
-    const error = parseFdmsError(response.status, responseText, response.headers);
+  if (responseStatus < 200 || responseStatus >= 300) {
+    const error = parseFdmsError(responseStatus, responseText, responseHeaders);
     throw new FdmsApiException(
-      error.status ?? response.status,
+      error.status ?? responseStatus,
       error.title ?? "FDMS request failed",
       error.detail ?? responseText,
       error.errorCode,
@@ -149,7 +196,7 @@ export async function fdmsRequest<T>(
 function parseFdmsError(
   httpStatus: number,
   body: string,
-  headers: Headers
+  headers: Record<string, string>
 ): FdmsErrorResponse {
   try {
     if (!body.trim()) {
@@ -161,8 +208,8 @@ function parseFdmsError(
       root.operationID ||
       root.operationId ||
       root.traceId ||
-      headers.get("operationID") ||
-      headers.get("operationId");
+      headers["operationid"] ||
+      headers["operationID"];
 
     let detail = root.detail;
     if (!detail && root.errors) {

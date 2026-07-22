@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { DeviceActions } from "@/components/admin/device-actions";
+import { DeviceStatusButton } from "@/components/admin/device-status-button";
+import { DeviceConfigButton } from "@/components/admin/device-config-button";
 
 export default async function DeviceDetailPage({
   params,
@@ -35,6 +37,18 @@ export default async function DeviceDetailPage({
           <Badge variant={device.activated ? "default" : "secondary"}>
             {device.activated ? "Activated" : "Not Activated"}
           </Badge>
+          <DeviceStatusButton
+            clientId={clientId}
+            deviceId={device.deviceId!}
+            deviceModelName={device.deviceModelName}
+            deviceModelVersion={device.deviceModelVersion}
+          />
+          <DeviceConfigButton
+            clientId={clientId}
+            deviceId={device.deviceId!}
+            deviceModelName={device.deviceModelName}
+            deviceModelVersion={device.deviceModelVersion}
+          />
           <DeviceActions device={device as any} />
         </div>
       </PageHeader>

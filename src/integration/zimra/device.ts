@@ -2,24 +2,88 @@ import { fdmsRequest, type FdmsApiException } from "./client";
 import { FDMS_PATHS } from "./config";
 
 export interface RegisterDeviceRequest {
-  DeviceModelName: string;
-  DeviceModelVersion: string;
-  SerialNumber: string;
-  CommonName: string;
-  PublicKey: string;
+  ActivationKey: string;
+  CertificateRequest: string;
+}
+
+export interface RegisterDeviceResponse {
+  certificate: string;
+  operationID: string;
+}
+
+export interface DeviceBranchAddress {
+  province?: string;
+  street?: string;
+  houseNo?: string;
+  city?: string;
+}
+
+export interface DeviceBranchContacts {
+  phoneNo?: string;
+  email?: string;
+}
+
+export interface ApplicableTax {
+  taxID?: number;
+  taxPercent?: number;
+  taxName?: string;
+  taxValidFrom?: string;
+  taxValidTill?: string;
+  exempt?: boolean;
+  zeroRated?: boolean;
+  vatRated?: boolean;
 }
 
 export interface DeviceConfigResponse {
-  DeviceOperatingMode?: string;
-  FirmwareVersion?: string;
-  TimeStamp?: string;
+  operationID?: string;
+  taxPayerName?: string;
+  taxPayerTIN?: string;
+  vatNumber?: string;
+  deviceSerialNo?: string;
+  deviceBranchName?: string;
+  deviceBranchAddress?: DeviceBranchAddress;
+  deviceBranchContacts?: DeviceBranchContacts;
+  deviceOperatingMode?: string;
+  taxPayerDayMaxHrs?: number;
+  applicableTaxes?: ApplicableTax[];
+  certificateValidTill?: string;
+  qrUrl?: string;
+  taxpayerDayEndNotificationHrs?: number;
+}
+
+export interface FiscalDayServerSignature {
+  hash?: string;
+  signature?: string;
+  certificateThumbprint?: string;
+}
+
+export interface FiscalCounterEntry {
+  fiscalCounterType?: string;
+  fiscalCounterCurrency?: string;
+  fiscalCounterTaxPercent?: number;
+  fiscalCounterTaxID?: number;
+  fiscalCounterMoneyType?: string;
+  fiscalCounterValue?: number;
+}
+
+export interface FiscalDayDocumentQuantity {
+  receiptType?: string;
+  receiptCurrency?: string;
+  receiptQuantity?: number;
+  receiptTotalAmount?: number;
 }
 
 export interface GetStatusResponse {
-  DeviceOperatingMode?: string;
-  FiscalDayStatus?: string;
-  FiscalDayNo?: number;
-  TimeStamp?: string;
+  operationID?: string;
+  fiscalDayStatus?: string;
+  fiscalDayReconciliationMode?: string;
+  fiscalDayServerSignature?: FiscalDayServerSignature;
+  fiscalDayClosed?: string;
+  fiscalDayCounter?: FiscalCounterEntry[];
+  lastReceiptGlobalNo?: number;
+  lastFiscalDayNo?: number;
+  fiscalDayClosingErrorCode?: string;
+  fiscalDayDocumentQuantities?: FiscalDayDocumentQuantity[];
 }
 
 export interface CertificateResponse {
@@ -101,17 +165,16 @@ export async function registerDevice(
   deviceId: number,
   deviceModelName: string,
   deviceModelVersion: string,
-  certificateRequest: RegisterDeviceRequest
-): Promise<string> {
-  const result = await fdmsRequest<string>({
+  request: RegisterDeviceRequest
+): Promise<RegisterDeviceResponse> {
+  return fdmsRequest<RegisterDeviceResponse>({
     method: "POST",
     path: FDMS_PATHS.REGISTER_DEVICE,
     deviceId,
     deviceModelName,
     deviceModelVersion,
-    body: certificateRequest,
+    body: request,
   });
-  return result;
 }
 
 export async function getDeviceConfig(
@@ -156,7 +219,7 @@ export async function issueCertificate(
   deviceModelVersion: string,
   certificatePem: string,
   privateKeyPem: string,
-  certificateRequest: RegisterDeviceRequest
+  request: RegisterDeviceRequest
 ): Promise<CertificateResponse> {
   return fdmsRequest<CertificateResponse>({
     method: "POST",
@@ -166,7 +229,7 @@ export async function issueCertificate(
     deviceModelVersion,
     certificatePem,
     privateKeyPem,
-    body: certificateRequest,
+    body: request,
   });
 }
 

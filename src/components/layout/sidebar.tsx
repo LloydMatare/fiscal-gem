@@ -45,7 +45,7 @@ export function Sidebar({ mode }: { mode: "admin" | "tenant" }) {
       <div className="flex items-center justify-between px-3 py-4">
         {!collapsed && (
           <span className="text-sm font-semibold tracking-tight">
-            {mode === "admin" ? "Fiscal Edge Admin" : "Fiscal Edge"}
+            {mode === "admin" ? "Fiscal Gem Admin" : "Fiscal Gem"}
           </span>
         )}
         <button

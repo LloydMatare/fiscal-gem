@@ -1,13 +1,7 @@
 import crypto from "crypto";
-import fs from "fs/promises";
-import path from "path";
+import { UTApi } from "uploadthing/server";
 
-const KEYS_PATH = process.env.FDMS_KEYS_PATH || "./keys";
-
-export interface KeyMaterial {
-  privateKeyPem: string;
-  publicKeyPem: string;
-}
+const utapi = new UTApi();
 
 export interface CsrResult {
   commonName: string;
@@ -15,6 +9,20 @@ export interface CsrResult {
   publicKeyPem: string;
   csrPem: string;
   csrPayload: string;
+}
+
+export interface UploadThingFile {
+  url: string;
+  name: string;
+  size: number;
+}
+
+export interface KeyMaterialUrls {
+  privateKeyUrl: string;
+  publicKeyUrl: string;
+  csrUrl: string;
+  csrPayloadUrl: string;
+  certificateUrl?: string;
 }
 
 /**
@@ -27,14 +35,12 @@ export async function generateCsr(
 ): Promise<CsrResult> {
   const commonName = `ZIMRA-${deviceId}-${serialNumber}`;
 
-  // Generate EC key pair using Node.js crypto
   const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", {
     namedCurve: "P-256",
     publicKeyEncoding: { type: "spki", format: "pem" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
   });
 
-  // Build CSR using Node.js crypto (via CSR signing)
   const csrPem = buildCsrPem(privateKey, publicKey, commonName);
   const csrPayload = csrPem
     .replace(/-----BEGIN CERTIFICATE REQUEST-----/, "")
@@ -51,47 +57,20 @@ export async function generateCsr(
   };
 }
 
-/**
- * Build a CSR PEM string using Node.js crypto.
- * Creates a self-signed CSR with the given subject.
- */
 function buildCsrPem(
   privateKeyPem: string,
   publicKeyPem: string,
   commonName: string
 ): string {
-  // Node.js doesn't have a direct CSR builder, so we use a minimal approach
-  // The CSR will be submitted to ZIMRA which handles the actual signing
-  const subject = `/CN=${commonName}`;
-
-  // For production, consider using a library like node-forge for full CSR generation
-  // For now, we'll create a basic CSR structure
-  const csrInfo = {
-    subject,
-    publicKey: publicKeyPem,
-    signatureAlgorithm: "SHA256withECDSA",
-  };
-
-  // Simple CSR generation using crypto
   const privateKeyObj = crypto.createPrivateKey(privateKeyPem);
-
-  // Create the CSR data to sign
   const tbsCertificate = buildTbsCertificate(commonName, publicKeyPem);
 
-  // Sign the TBS certificate
   const signature = crypto.sign("SHA256", Buffer.from(tbsCertificate), {
     key: privateKeyObj,
     padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
   });
 
-  // Build the CSR in DER format
-  const der = buildCsrDer(
-    tbsCertificate,
-    signature,
-    "SHA256withECDSA"
-  );
-
-  // Convert to PEM
+  const der = buildCsrDer(tbsCertificate, signature, "SHA256withECDSA");
   const base64 = der.toString("base64");
   const lines = base64.match(/.{1,64}/g) || [];
   return [
@@ -108,140 +87,122 @@ function buildTbsCertificate(commonName: string, publicKeyPem: string): string {
 function buildCsrDer(
   tbsCertificate: string,
   signature: Buffer,
-  algorithm: string
+  _algorithm: string
 ): Buffer {
-  // Simplified DER encoding for CSR
-  // In production, use a proper ASN.1 library
   return Buffer.from([...Buffer.from(tbsCertificate), ...signature]);
 }
 
 /**
- * Saves key material (private key, public key, CSR) to the filesystem.
- * Replaces PemFileStorageService.
+ * Uploads key material to UploadThing and returns URLs.
  */
-export async function saveKeyMaterial(
+export async function uploadKeyMaterial(
   clientId: string,
   deviceId: number,
-  keyMaterial: CsrResult,
-  replace = false
-): Promise<void> {
-  const deviceDir = path.join(KEYS_PATH, clientId, String(deviceId));
+  keyMaterial: CsrResult
+): Promise<KeyMaterialUrls> {
+  const prefix = `${clientId}/${deviceId}`;
 
-  await fs.mkdir(deviceDir, { recursive: true });
+  const files = [
+    new File([keyMaterial.privateKeyPem], `${prefix}/private-key.pem`, {
+      type: "text/plain",
+    }),
+    new File([keyMaterial.publicKeyPem], `${prefix}/public-key.pem`, {
+      type: "text/plain",
+    }),
+    new File([keyMaterial.csrPem], `${prefix}/csr.pem`, {
+      type: "text/plain",
+    }),
+    new File([keyMaterial.csrPayload], `${prefix}/csr-payload.txt`, {
+      type: "text/plain",
+    }),
+  ];
 
-  const files = {
-    "private-key.pem": keyMaterial.privateKeyPem,
-    "public-key.pem": keyMaterial.publicKeyPem,
-    "csr.pem": keyMaterial.csrPem,
-    "csr-payload.txt": keyMaterial.csrPayload,
+  const uploaded = await utapi.uploadFiles(files);
+
+  return {
+    privateKeyUrl: uploaded[0].data?.ufsUrl ?? "",
+    publicKeyUrl: uploaded[1].data?.ufsUrl ?? "",
+    csrUrl: uploaded[2].data?.ufsUrl ?? "",
+    csrPayloadUrl: uploaded[3].data?.ufsUrl ?? "",
   };
-
-  for (const [filename, content] of Object.entries(files)) {
-    const filePath = path.join(deviceDir, filename);
-
-    if (!replace) {
-      try {
-        await fs.access(filePath);
-        // File exists, skip
-        continue;
-      } catch {
-        // File doesn't exist, proceed to write
-      }
-    }
-
-    await fs.writeFile(filePath, content, "utf-8");
-  }
 }
 
 /**
- * Reads the CSR PEM from the filesystem.
+ * Uploads the device certificate PEM to UploadThing.
  */
-export async function readCsrPem(
-  clientId: string,
-  deviceId: number
-): Promise<string> {
-  const filePath = path.join(KEYS_PATH, clientId, String(deviceId), "csr.pem");
-  return fs.readFile(filePath, "utf-8");
-}
-
-/**
- * Reads the private key PEM from the filesystem.
- */
-export async function readPrivateKeyPem(
-  clientId: string,
-  deviceId: number
-): Promise<string> {
-  const filePath = path.join(
-    KEYS_PATH,
-    clientId,
-    String(deviceId),
-    "private-key.pem"
-  );
-  return fs.readFile(filePath, "utf-8");
-}
-
-/**
- * Reads the public key PEM from the filesystem.
- */
-export async function readPublicKeyPem(
-  clientId: string,
-  deviceId: number
-): Promise<string> {
-  const filePath = path.join(
-    KEYS_PATH,
-    clientId,
-    String(deviceId),
-    "public-key.pem"
-  );
-  return fs.readFile(filePath, "utf-8");
-}
-
-/**
- * Checks if key material exists for a device.
- */
-export async function keyMaterialExists(
-  clientId: string,
-  deviceId: number
-): Promise<boolean> {
-  try {
-    await fs.access(
-      path.join(KEYS_PATH, clientId, String(deviceId), "private-key.pem")
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Saves the device certificate PEM after ZIMRA issues it.
- */
-export async function saveCertificate(
+export async function uploadCertificate(
   clientId: string,
   deviceId: number,
   certificatePem: string
-): Promise<void> {
-  const filePath = path.join(
-    KEYS_PATH,
-    clientId,
-    String(deviceId),
-    "certificate.pem"
+): Promise<string> {
+  const file = new File(
+    [certificatePem],
+    `${clientId}/${deviceId}/certificate.pem`,
+    { type: "text/plain" }
   );
-  await fs.writeFile(filePath, certificatePem, "utf-8");
+
+  const uploaded = await utapi.uploadFiles([file]);
+  return uploaded[0].data?.ufsUrl ?? "";
 }
 
 /**
- * Reads the device certificate PEM.
+ * Downloads a file from a URL and returns its text content.
+ */
+export async function downloadFileAsText(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to download file: ${url}`);
+  return res.text();
+}
+
+/**
+ * Reads the certificate PEM from the DB or downloads private key from UploadThing.
  */
 export async function readCertificatePem(
-  clientId: string,
-  deviceId: number
+  certificatePem: string
 ): Promise<string> {
-  const filePath = path.join(
-    KEYS_PATH,
-    clientId,
-    String(deviceId),
-    "certificate.pem"
-  );
-  return fs.readFile(filePath, "utf-8");
+  return certificatePem;
+}
+
+export async function readPrivateKeyFromUrl(url: string): Promise<string> {
+  return downloadFileAsText(url);
+}
+
+/**
+ * Uploads multiple PEM files (private key, public key, CSR, certificate) in one batch.
+ */
+export async function uploadAllKeyMaterial(
+  clientId: string,
+  deviceId: number,
+  keyMaterial: CsrResult,
+  certificatePem: string
+): Promise<KeyMaterialUrls> {
+  const prefix = `${clientId}/${deviceId}`;
+
+  const files = [
+    new File([keyMaterial.privateKeyPem], `${prefix}/private-key.pem`, {
+      type: "text/plain",
+    }),
+    new File([keyMaterial.publicKeyPem], `${prefix}/public-key.pem`, {
+      type: "text/plain",
+    }),
+    new File([keyMaterial.csrPem], `${prefix}/csr.pem`, {
+      type: "text/plain",
+    }),
+    new File([keyMaterial.csrPayload], `${prefix}/csr-payload.txt`, {
+      type: "text/plain",
+    }),
+    new File([certificatePem], `${prefix}/certificate.pem`, {
+      type: "text/plain",
+    }),
+  ];
+
+  const uploaded = await utapi.uploadFiles(files);
+
+  return {
+    privateKeyUrl: uploaded[0].data?.ufsUrl ?? "",
+    publicKeyUrl: uploaded[1].data?.ufsUrl ?? "",
+    csrUrl: uploaded[2].data?.ufsUrl ?? "",
+    csrPayloadUrl: uploaded[3].data?.ufsUrl ?? "",
+    certificateUrl: uploaded[4].data?.ufsUrl ?? "",
+  };
 }
