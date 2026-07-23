@@ -1,9 +1,10 @@
 import { db } from "@/db";
-import { clients, receipts } from "@/db/schema";
+import { clients, receipts, devices } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptStatusBadge } from "@/components/status-badge";
+import { SubmitReceiptButton } from "@/components/admin/submit-receipt-button";
 import Link from "next/link";
 
 export default async function AdminReceiptsPage({
@@ -17,6 +18,10 @@ export default async function AdminReceiptsPage({
     where: eq(clients.id, clientId),
   });
   if (!client) notFound();
+
+  const device = await db.query.devices.findFirst({
+    where: eq(devices.clientId, clientId),
+  });
 
   const receiptList = await db.query.receipts.findMany({
     where: eq(receipts.clientId, clientId),
@@ -34,7 +39,16 @@ export default async function AdminReceiptsPage({
           { label: client.name, href: `/admin/clients/${clientId}` },
           { label: "Receipts", href: "#" },
         ]}
-      />
+      >
+        {device?.deviceId != null && (
+          <SubmitReceiptButton
+            clientId={clientId}
+            deviceId={device.deviceId}
+            deviceModelName={device.modelName}
+            deviceModelVersion={device.modelVersion}
+          />
+        )}
+      </PageHeader>
 
       <div className="rounded-md border">
         <table className="w-full">

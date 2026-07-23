@@ -131,4 +131,10 @@
   html {
     @apply font-sans;
   }
+  *::-webkit-scrollbar {
+    display: none;
+  }
+  * {
+    scrollbar-width: none;
+  }
 }
