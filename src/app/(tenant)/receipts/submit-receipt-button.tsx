@@ -20,12 +20,29 @@ interface ReceiptPayment {
   paymentAmount: number;
 }
 
+interface Customer {
+  id: string;
+  name: string;
+  tradeName: string | null;
+  tin: string | null;
+  vatNumber: string | null;
+  phone: string | null;
+  email: string | null;
+  province: string | null;
+  city: string | null;
+  street: string | null;
+  houseNo: string | null;
+  district: string | null;
+}
+
 export function SubmitReceiptButton() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fiscalDayStatus, setFiscalDayStatus] = useState<{ hasFiscalDay: boolean; fiscalDayNo?: number } | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
 
   const [form, setForm] = useState({
     shopId: "",
@@ -60,12 +77,13 @@ export function SubmitReceiptButton() {
 
   useEffect(() => {
     if (open) {
-      // Fetch shop, device, and fiscal day status
+      // Fetch shop, device, customers, and fiscal day status
       Promise.all([
         fetch("/api/tenant/shops?limit=1").then((r) => r.json()),
         fetch("/api/tenant/devices?limit=1").then((r) => r.json()),
+        fetch("/api/tenant/customers?limit=100").then((r) => r.json()),
       ])
-        .then(([shopRes, deviceRes]) => {
+        .then(([shopRes, deviceRes, customerRes]) => {
           const shop = shopRes.data?.[0];
           const device = deviceRes.data?.[0];
 
@@ -74,6 +92,8 @@ export function SubmitReceiptButton() {
             shopId: shop?.id || "",
             deviceId: device?.deviceId ? String(device.deviceId) : "",
           }));
+
+          setCustomers(customerRes.data || []);
 
           // Check fiscal day status
           if (device?.deviceId) {
@@ -113,7 +133,7 @@ export function SubmitReceiptButton() {
         receiptLineType: "Sale",
         receiptLineNo: i + 1,
         receiptLineHSCode: l.articleCode || "00000000",
-        receiptLineName: l.articleName,
+        receiptLineName: l.articleName || `Item ${i + 1}`,
         receiptLinePrice: l.unitPrice,
         receiptLineQuantity: l.quantity,
         receiptLineTotal: Number((l.quantity * l.unitPrice).toFixed(2)),
@@ -203,6 +223,7 @@ export function SubmitReceiptButton() {
         buyerPhone: "", buyerEmail: "", buyerProvince: "", buyerCity: "",
         buyerStreet: "", buyerHouseNo: "", buyerDistrict: "", receiptNotes: "",
       });
+      setSelectedCustomerId("");
       setLines([{ articleName: "", articleCode: "", quantity: 1, unitPrice: 0, taxRate: 15 }]);
       setPayments([{ paymentType: "Cash", paymentAmount: 0 }]);
       router.refresh();
@@ -298,7 +319,53 @@ export function SubmitReceiptButton() {
 
             {/* Buyer */}
             <div className="border-t pt-3">
-              <h4 className="text-sm font-semibold mb-2">Buyer Information</h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold">Buyer Information</h4>
+              </div>
+              {customers.length > 0 && (
+                <div className="mb-3">
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Select Saved Customer</label>
+                  <select
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                    value={selectedCustomerId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSelectedCustomerId(id);
+                      if (!id) {
+                        setForm((prev) => ({
+                          ...prev,
+                          buyerName: "", buyerTradeName: "", buyerTIN: "", buyerVATNumber: "",
+                          buyerPhone: "", buyerEmail: "", buyerProvince: "", buyerCity: "",
+                          buyerStreet: "", buyerHouseNo: "", buyerDistrict: "",
+                        }));
+                        return;
+                      }
+                      const c = customers.find((cu) => cu.id === id);
+                      if (c) {
+                        setForm((prev) => ({
+                          ...prev,
+                          buyerName: c.name || "",
+                          buyerTradeName: c.tradeName || "",
+                          buyerTIN: c.tin || "",
+                          buyerVATNumber: c.vatNumber || "",
+                          buyerPhone: c.phone || "",
+                          buyerEmail: c.email || "",
+                          buyerProvince: c.province || "",
+                          buyerCity: c.city || "",
+                          buyerStreet: c.street || "",
+                          buyerHouseNo: c.houseNo || "",
+                          buyerDistrict: c.district || "",
+                        }));
+                      }
+                    }}
+                  >
+                    <option value="">-- Enter manually --</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}{c.tradeName ? ` (${c.tradeName})` : ""}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="grid gap-3 md:grid-cols-2">
                 <Input placeholder="Buyer Name" value={form.buyerName} onChange={(e) => setForm({ ...form, buyerName: e.target.value })} />
                 <Input placeholder="Trade Name" value={form.buyerTradeName} onChange={(e) => setForm({ ...form, buyerTradeName: e.target.value })} />

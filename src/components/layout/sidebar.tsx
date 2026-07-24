@@ -12,6 +12,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  UserCheck,
 } from "lucide-react";
 import { useState } from "react";
 import { DeviceStatusFooter } from "./device-status-footer";
@@ -27,6 +28,7 @@ const tenantNav = [
   { label: "Profile", href: "/profile", icon: Users },
   { label: "Shops", href: "/shops", icon: Store },
   { label: "Devices", href: "/devices", icon: Smartphone },
+  { label: "Customers", href: "/customers", icon: UserCheck },
   { label: "Receipts", href: "/receipts", icon: Receipt },
   { label: "Settings", href: "/settings", icon: Settings },
 ];

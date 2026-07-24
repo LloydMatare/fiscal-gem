@@ -36,25 +36,24 @@ export async function validateReceiptSubmit(
     errors.push({ field: "fiscalPayload.receipt.invoiceNo", message: "invoiceNo is required" });
   }
 
-  const lines = receipt.receiptLines as Array<Record<string, unknown>> | undefined;
+  const lines = (receipt.receiptLines || receipt.lines) as Array<Record<string, unknown>> | undefined;
   if (!lines || lines.length === 0) {
     errors.push({ field: "fiscalPayload.receipt.receiptLines", message: "At least one receipt line is required" });
   } else {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (!line.receiptLineName) {
-        errors.push({ field: `receiptLines[${i}].receiptLineName`, message: "Line name is required" });
-      }
-      if (typeof line.receiptLineQuantity !== "number" || line.receiptLineQuantity <= 0) {
+      const qty = line.receiptLineQuantity ?? line.quantity;
+      if (typeof qty !== "number" || qty <= 0) {
         errors.push({ field: `receiptLines[${i}].receiptLineQuantity`, message: "Quantity must be > 0" });
       }
-      if (typeof line.receiptLinePrice !== "number" || line.receiptLinePrice < 0) {
+      const price = line.receiptLinePrice ?? line.unitPrice;
+      if (typeof price !== "number" || price < 0) {
         errors.push({ field: `receiptLines[${i}].receiptLinePrice`, message: "Price must be >= 0" });
       }
     }
   }
 
-  const payments = receipt.receiptPayments as Array<Record<string, unknown>> | undefined;
+  const payments = (receipt.receiptPayments || receipt.payments) as Array<Record<string, unknown>> | undefined;
   if (!payments || payments.length === 0) {
     errors.push({ field: "fiscalPayload.receipt.receiptPayments", message: "At least one payment is required" });
   } else {

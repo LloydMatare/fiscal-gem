@@ -153,7 +153,9 @@ export async function POST(req: NextRequest) {
     const receiptGlobalNo = (lastReceipt?.receiptGlobalNo || 0) + 1;
     const receiptCounter = (lastReceipt?.receiptCounter || 0) + 1;
     const now = new Date();
-    const nowStr = now.toISOString();
+    const datePart = now.toISOString().split("T")[0];
+    const timePart = now.toTimeString().split(" ")[0];
+    const receiptDate = `${datePart}T${timePart}`;
 
     const taxIdMap: Record<number, number> = { 0: 2, 5: 514, 15: 515, 15.5: 515 };
     const getTaxId = (rate: number) => {
@@ -225,7 +227,7 @@ export async function POST(req: NextRequest) {
         receiptCurrency: (receiptData.receiptCurrency as string) || "USD",
         invoiceNo: (receiptData.invoiceNo as string) || `INV-${receiptGlobalNo}`,
         externalReference: (body.externalReference as string) || `EXT-${Date.now()}`,
-        receiptDate: (receiptData.receiptDate as string) || nowStr,
+        receiptDate: receiptDate,
         operatorId: (receiptData.username as string) || (receiptData.operatorId as string) || "TENANT",
         fiscalDayNo,
         previousReceiptHash,
@@ -260,28 +262,6 @@ export async function POST(req: NextRequest) {
       console.error("Failed to sign receipt:", signErr);
     }
 
-    const [savedReceipt] = await db
-      .insert(receipts)
-      .values({
-        clientId,
-        deviceId: device.id,
-        shopId: body.shopId || null,
-        fiscalDayId: openFiscalDay?.id,
-        fiscalDayNo: openFiscalDay?.fiscalDayNo,
-        receiptGlobalNo,
-        receiptCounter,
-        receiptType: (receiptData.receiptType as string) || "FISCALINVOICE",
-        invoiceNo: zimraRequest.receipt.invoiceNo,
-        externalReference: externalRef,
-        receiptNumber: (body.receiptNumber as string) || null,
-        originalPayloadJson: JSON.stringify(body.originalPayload || body),
-        fiscalPayloadJson: JSON.stringify(signedPayload),
-        status: "RECEIVED",
-        receivedAt: now,
-        createdBy: "tenant",
-      })
-      .returning();
-
     try {
       const zimraResponse = await submitReceipt(
         deviceIdNum,
@@ -306,9 +286,23 @@ export async function POST(req: NextRequest) {
         || null;
       const fdmsValidationErrors = zimraResponse.validationErrors || null;
 
-      const [updated] = await db
-        .update(receipts)
-        .set({
+      // Only save receipt after successful ZIMRA response
+      const [savedReceipt] = await db
+        .insert(receipts)
+        .values({
+          clientId,
+          deviceId: device.id,
+          shopId: body.shopId || null,
+          fiscalDayId: openFiscalDay?.id,
+          fiscalDayNo: openFiscalDay?.fiscalDayNo,
+          receiptGlobalNo,
+          receiptCounter,
+          receiptType: (receiptData.receiptType as string) || "FISCALINVOICE",
+          invoiceNo: zimraRequest.receipt.invoiceNo,
+          externalReference: externalRef,
+          receiptNumber: (body.receiptNumber as string) || null,
+          originalPayloadJson: JSON.stringify(body.originalPayload || body),
+          fiscalPayloadJson: JSON.stringify(signedPayload),
           fdmsResponseJson: JSON.stringify(zimraResponse),
           fdmsOperationId: fdmsOpId,
           fdmsReceiptId: fdmsReceiptId,
@@ -324,26 +318,16 @@ export async function POST(req: NextRequest) {
           fiscalisedAt: fdmsOpId && fdmsReceiptId ? now : undefined,
           sentAt: now,
           processedAt: now,
-          updatedAt: now,
+          receivedAt: now,
+          createdBy: "tenant",
         })
-        .where(eq(receipts.id, savedReceipt.id))
         .returning();
 
-      return apiSuccess(mapReceiptToSwagger(updated), 201);
+      return apiSuccess(mapReceiptToSwagger(savedReceipt), 201);
     } catch (zimraError: any) {
-      await db
-        .update(receipts)
-        .set({
-          status: "FAILED",
-          errorCode: zimraError.code || "ZIMRA_ERROR",
-          errorMessage: zimraError.message || "Failed to submit to ZIMRA",
-          updatedAt: now,
-        })
-        .where(eq(receipts.id, savedReceipt.id));
-
       return apiError({
         statusCode: zimraError.status || 502,
-        message: `Receipt saved but ZIMRA submission failed: ${zimraError.message}`,
+        message: `ZIMRA submission failed: ${zimraError.message}`,
       });
     }
   } catch (error) {
