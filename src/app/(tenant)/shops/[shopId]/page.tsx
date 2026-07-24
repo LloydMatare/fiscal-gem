@@ -1,7 +1,7 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { resolveClient } from "@/lib/tenant";
+import { OrgNotConfigured } from "@/components/layout/org-not-configured";
 import { db } from "@/db";
-import { clients, shops, agents } from "@/db/schema";
+import { shops, agents } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
@@ -12,13 +12,9 @@ export default async function ShopDetailPage({
 }: {
   params: Promise<{ shopId: string }>;
 }) {
-  const { userId, orgId } = await auth();
-  if (!userId || !orgId) redirect("/sign-in");
-
-  const client = await db.query.clients.findFirst({
-    where: eq(clients.clerkOrgId, orgId),
-  });
-  if (!client) redirect("/");
+  const resolved = await resolveClient();
+  if (!resolved) return <OrgNotConfigured />;
+  const { client } = resolved;
 
   const { shopId } = await params;
   const shop = await db.query.shops.findFirst({

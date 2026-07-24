@@ -51,12 +51,17 @@ export function SubmitReceiptButton({
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     invoiceNo: "",
-    receiptType: "FISCAL_INVOICE",
+    receiptType: "FISCALINVOICE",
     operatorId: "ADMIN",
+    fiscalDayNo: "",
+    buyerName: "",
+    buyerTIN: "",
+    buyerAddress: "",
+    buyerPhone: "",
   });
 
   const [lines, setLines] = useState<ReceiptLine[]>([
-    { articleName: "", quantity: 1, unitPrice: 0, taxRate: 15 },
+    { articleName: "", quantity: 1, unitPrice: 0, taxRate: 15.5 },
   ]);
   const [payments, setPayments] = useState<ReceiptPayment[]>([
     { paymentType: "CASH", paymentAmount: 0 },
@@ -66,8 +71,10 @@ export function SubmitReceiptButton({
     (sum, l) => sum + l.quantity * l.unitPrice,
     0
   );
+  // Tax-inclusive: tax is already included in unitPrice
   const totalTax = lines.reduce(
-    (sum, l) => sum + l.quantity * l.unitPrice * (l.taxRate / 100),
+    (sum, l) =>
+      sum + (l.taxRate > 0 ? l.quantity * l.unitPrice * l.taxRate / (100 + l.taxRate) : 0),
     0
   );
 
@@ -104,7 +111,7 @@ export function SubmitReceiptButton({
         ...p,
         paymentAmount:
           p.paymentType === "CASH"
-            ? totalAmount + totalTax
+            ? totalAmount
             : p.paymentAmount,
       }));
 
@@ -122,9 +129,19 @@ export function SubmitReceiptButton({
               invoiceNo: form.invoiceNo || `INV-${Date.now()}`,
               externalReference: `EXT-${Date.now()}`,
               operatorId: form.operatorId,
+              fiscalDayNo: form.fiscalDayNo ? Number(form.fiscalDayNo) : undefined,
               lines: receiptLines,
               payments: receiptPayments,
               taxes: receiptTaxes,
+              buyer:
+                form.buyerName || form.buyerTIN
+                  ? {
+                      name: form.buyerName || undefined,
+                      tin: form.buyerTIN || undefined,
+                      address: form.buyerAddress || undefined,
+                      contact: form.buyerPhone || undefined,
+                    }
+                  : undefined,
             },
           }),
         }
@@ -137,7 +154,7 @@ export function SubmitReceiptButton({
         `Receipt #${data.data?.fdmsResponse?.ReceiptGlobalNo || "?"} fiscalised`
       );
       setOpen(false);
-      setLines([{ articleName: "", quantity: 1, unitPrice: 0, taxRate: 15 }]);
+      setLines([{ articleName: "", quantity: 1, unitPrice: 0, taxRate: 15.5 }]);
       setPayments([{ paymentType: "CASH", paymentAmount: 0 }]);
       router.refresh();
     } catch (e: any) {
@@ -174,15 +191,54 @@ export function SubmitReceiptButton({
                   setForm({ ...form, receiptType: e.target.value })
                 }
               >
-                <option value="FISCAL_INVOICE">Fiscal Invoice</option>
-                <option value="FISCAL_CREDIT_NOTE">Credit Note</option>
-                <option value="FISCAL_DEBIT_NOTE">Debit Note</option>
+                <option value="FISCALINVOICE">Fiscal Invoice</option>
+                <option value="CREDITNOTE">Credit Note</option>
+                <option value="DEBITNOTE">Debit Note</option>
               </select>
               <Input
                 placeholder="Operator ID"
                 value={form.operatorId}
                 onChange={(e) =>
                   setForm({ ...form, operatorId: e.target.value })
+                }
+              />
+            </div>
+
+            {/* Fiscal Day + Buyer */}
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input
+                placeholder="Fiscal Day No (leave blank to auto-detect)"
+                type="number"
+                value={form.fiscalDayNo}
+                onChange={(e) =>
+                  setForm({ ...form, fiscalDayNo: e.target.value })
+                }
+              />
+              <Input
+                placeholder="Buyer Name"
+                value={form.buyerName}
+                onChange={(e) =>
+                  setForm({ ...form, buyerName: e.target.value })
+                }
+              />
+              <Input
+                placeholder="Buyer TIN"
+                value={form.buyerTIN}
+                onChange={(e) => setForm({ ...form, buyerTIN: e.target.value })}
+              />
+              <Input
+                placeholder="Buyer Phone"
+                value={form.buyerPhone}
+                onChange={(e) =>
+                  setForm({ ...form, buyerPhone: e.target.value })
+                }
+              />
+              <Input
+                placeholder="Buyer Address"
+                className="md:col-span-2"
+                value={form.buyerAddress}
+                onChange={(e) =>
+                  setForm({ ...form, buyerAddress: e.target.value })
                 }
               />
             </div>
@@ -201,7 +257,7 @@ export function SubmitReceiptButton({
                         articleName: "",
                         quantity: 1,
                         unitPrice: 0,
-                        taxRate: 15,
+                        taxRate: 15.5,
                       },
                     ])
                   }
@@ -307,7 +363,7 @@ export function SubmitReceiptButton({
                       className="w-32"
                       value={
                         pmt.paymentType === "CASH"
-                          ? totalAmount + totalTax
+                          ? totalAmount
                           : pmt.paymentAmount || ""
                       }
                       readOnly={pmt.paymentType === "CASH"}
@@ -336,7 +392,7 @@ export function SubmitReceiptButton({
             {/* Totals */}
             <div className="flex justify-end gap-6 text-sm border-t pt-3">
               <div>
-                <span className="text-muted-foreground">Subtotal: </span>
+                <span className="text-muted-foreground">Subtotal (incl. tax): </span>
                 <span className="font-medium">{totalAmount.toFixed(2)}</span>
               </div>
               <div>
@@ -346,7 +402,7 @@ export function SubmitReceiptButton({
               <div>
                 <span className="font-semibold">Total: </span>
                 <span className="font-bold">
-                  {(totalAmount + totalTax).toFixed(2)}
+                  {totalAmount.toFixed(2)}
                 </span>
               </div>
             </div>

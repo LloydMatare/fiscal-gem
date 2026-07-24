@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 
 export function Navbar({ signedIn }: { signedIn: boolean }) {
+  const { orgRole } = useAuth();
+  const dashboardHref = orgRole === "org:admin" ? "/admin" : "/dashboard";
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-fedge-gold/10 bg-background/60 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto flex items-center justify-between h-16 px-6">
@@ -29,7 +32,7 @@ export function Navbar({ signedIn }: { signedIn: boolean }) {
 
         {signedIn ? (
           <Link
-            href="/admin"
+            href={dashboardHref}
             className="rounded-lg bg-fedge-dark px-4 py-2 text-sm font-medium text-fedge-cream transition-all hover:bg-fedge-mid"
           >
             Dashboard

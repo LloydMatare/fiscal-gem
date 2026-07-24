@@ -5,6 +5,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useAuth } from "@clerk/nextjs";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -16,6 +17,8 @@ const benefits = [
 ];
 
 export function CtaSection({ signedIn }: { signedIn: boolean }) {
+  const { orgRole } = useAuth();
+  const dashboardHref = orgRole === "org:admin" ? "/admin" : "/dashboard";
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,7 +74,7 @@ export function CtaSection({ signedIn }: { signedIn: boolean }) {
 
           {signedIn ? (
             <Link
-              href="/admin"
+              href={dashboardHref}
               className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-fedge-mid to-fedge-dark px-10 py-4 text-lg font-semibold text-fedge-cream shadow-xl shadow-fedge-dark/25 transition-all hover:shadow-2xl hover:shadow-fedge-dark/40 hover:scale-105"
             >
               Go to Dashboard

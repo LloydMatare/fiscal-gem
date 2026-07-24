@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { clients, receipts, devices } from "@/db/schema";
+import { receipts } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { requireAdmin } from "@/lib/tenant";
+import { requireTenant } from "@/lib/tenant";
 import { apiSuccess, apiError } from "@/lib/api-response";
 
-function mapReceiptToSwagger(r: any, deviceDeviceId?: number) {
+function mapReceiptToSwagger(r: any) {
   let signedFiscalPayload = null;
   if (r.signedPayloadJson) {
     try { signedFiscalPayload = JSON.parse(r.signedPayloadJson); } catch {}
@@ -17,14 +17,13 @@ function mapReceiptToSwagger(r: any, deviceDeviceId?: number) {
     id: r.id,
     clientId: r.clientId,
     shopId: r.shopId,
-    deviceEntityId: r.deviceId,
-    deviceId: deviceDeviceId,
+    deviceId: r.deviceId,
     externalReference: r.externalReference,
     receiptNumber: r.receiptNumber,
     status: r.status,
     fdmsOperationId: r.fdmsOperationId,
     fdmsReceiptId: r.fdmsReceiptId,
-    fdmsServerDate: r.fdmsServerDate?.toISOString(),
+    fdmsServerDate: r.fdmsServerDate?.toISOString?.() ?? r.fdmsServerDate ?? null,
     fdmsServerSignatureHash: r.fdmsServerSignatureHash,
     fdmsServerSignature: r.fdmsServerSignature,
     fdmsServerSignatureThumbprint: r.fdmsServerSignatureThumbprint,
@@ -35,45 +34,38 @@ function mapReceiptToSwagger(r: any, deviceDeviceId?: number) {
     retryCount: r.retryCount,
     errorCode: r.errorCode,
     errorMessage: r.errorMessage,
-    receivedAt: r.receivedAt?.toISOString(),
-    processedAt: r.processedAt?.toISOString(),
-    signedAt: r.signedAt?.toISOString(),
-    sentAt: r.sentAt?.toISOString(),
-    fiscalisedAt: r.fiscalisedAt?.toISOString(),
-    lastRetryAt: r.lastRetryAt?.toISOString(),
-    createdAt: r.createdAt?.toISOString(),
-    updatedAt: r.updatedAt?.toISOString(),
+    receivedAt: r.receivedAt?.toISOString?.() ?? r.receivedAt ?? null,
+    processedAt: r.processedAt?.toISOString?.() ?? r.processedAt ?? null,
+    signedAt: r.signedAt?.toISOString?.() ?? r.signedAt ?? null,
+    sentAt: r.sentAt?.toISOString?.() ?? r.sentAt ?? null,
+    fiscalisedAt: r.fiscalisedAt?.toISOString?.() ?? r.fiscalisedAt ?? null,
+    lastRetryAt: r.lastRetryAt?.toISOString?.() ?? r.lastRetryAt ?? null,
+    createdAt: r.createdAt?.toISOString?.() ?? r.createdAt ?? null,
+    updatedAt: r.updatedAt?.toISOString?.() ?? r.updatedAt ?? null,
   };
 }
 
-// GET /api/admin/clients/[clientId]/receipts/[receiptId]
+// GET /tenant/receipts/[receiptId]
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ clientId: string; receiptId: string }> }
+  { params }: { params: Promise<{ receiptId: string }> }
 ) {
   try {
-    await requireAdmin();
-    const { clientId, receiptId } = await params;
-
-    const client = await db.query.clients.findFirst({
-      where: eq(clients.id, clientId),
-    });
-    if (!client) {
-      return apiError({ statusCode: 404, message: "Client not found" });
-    }
+    const ctx = await requireTenant();
+    const { receiptId } = await params;
 
     const receipt = await db.query.receipts.findFirst({
-      where: and(eq(receipts.id, receiptId), eq(receipts.clientId, clientId)),
+      where: and(
+        eq(receipts.id, receiptId),
+        eq(receipts.clientId, ctx.clientId!)
+      ),
     });
+
     if (!receipt) {
       return apiError({ statusCode: 404, message: "Receipt not found" });
     }
 
-    const device = await db.query.devices.findFirst({
-      where: eq(devices.id, receipt.deviceId),
-    });
-
-    return apiSuccess(mapReceiptToSwagger(receipt, device?.deviceId ?? undefined));
+    return apiSuccess(mapReceiptToSwagger(receipt));
   } catch (error) {
     return apiError(error);
   }

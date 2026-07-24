@@ -66,6 +66,23 @@ export async function requireTenant(): Promise<TenantContext> {
 }
 
 /**
+ * Resolves the client record for the current user's Clerk org.
+ * Returns null if no client is linked.
+ */
+export async function resolveClient(): Promise<{ userId: string; orgId: string; client: typeof clients.$inferSelect } | null> {
+  const { userId, orgId } = await auth();
+  if (!userId || !orgId) return null;
+
+  const client = await db.query.clients.findFirst({
+    where: eq(clients.clerkOrgId, orgId),
+  });
+
+  if (!client) return null;
+
+  return { userId, orgId, client };
+}
+
+/**
  * Provisions or updates a user in the database from Clerk session.
  */
 export async function provisionUser(

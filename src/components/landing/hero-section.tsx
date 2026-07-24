@@ -7,10 +7,13 @@ import { FiscalGlobe } from "./fiscal-globe";
 import { GridBackground } from "./grid-background";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
 
 gsap.registerPlugin(ScrollTrigger);
 
 export function HeroSection({ signedIn }: { signedIn: boolean }) {
+  const { orgRole } = useAuth();
+  const dashboardHref = orgRole === "org:admin" ? "/admin" : "/dashboard";
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const subRef = useRef<HTMLParagraphElement>(null);
   const ctaRef = useRef<HTMLDivElement>(null);
@@ -77,7 +80,7 @@ export function HeroSection({ signedIn }: { signedIn: boolean }) {
         <div ref={ctaRef} className="flex flex-col sm:flex-row items-center justify-center gap-4 opacity-0">
           {signedIn ? (
             <Link
-              href="/admin"
+              href={dashboardHref}
               className="group flex items-center gap-2 rounded-xl bg-gradient-to-r from-fedge-mid to-fedge-dark px-8 py-3.5 text-base font-semibold text-fedge-cream shadow-lg shadow-fedge-dark/25 transition-all hover:shadow-xl hover:shadow-fedge-dark/40 hover:scale-105"
             >
               Go to Dashboard

@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
       timeZone,
       notes,
       zimraDeviceId,
+      clerkOrgId,
     } = body;
 
     if (!name) {
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
         notes,
         zimraDeviceId,
         tenantCode,
+        clerkOrgId: clerkOrgId || null,
         status: "ACTIVE",
       })
       .returning();

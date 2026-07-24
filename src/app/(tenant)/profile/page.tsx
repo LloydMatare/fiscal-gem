@@ -1,19 +1,11 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
-import { db } from "@/db";
-import { clients } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { resolveClient } from "@/lib/tenant";
+import { OrgNotConfigured } from "@/components/layout/org-not-configured";
 import { PageHeader } from "@/components/layout/page-header";
 
 export default async function ProfilePage() {
-  const { userId, orgId } = await auth();
-  if (!userId || !orgId) redirect("/sign-in");
-
-  const client = await db.query.clients.findFirst({
-    where: eq(clients.clerkOrgId, orgId),
-  });
-
-  if (!client) redirect("/");
+  const resolved = await resolveClient();
+  if (!resolved) return <OrgNotConfigured />;
+  const { client } = resolved;
 
   return (
     <div>

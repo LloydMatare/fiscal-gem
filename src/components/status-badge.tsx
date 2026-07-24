@@ -36,6 +36,9 @@ const receiptStatusConfig: Record<string, { label: string; className: string }> 
   FISCALISED: { label: "Fiscalised", className: "bg-fedge-mid/20 text-fedge-dark border-fedge-mid/30" },
   FAILED: { label: "Failed", className: "bg-red-100 text-red-800 border-red-200" },
   RETRY: { label: "Retry", className: "bg-fedge-gold/15 text-fedge-dark border-fedge-gold/25" },
+  RETRY_PENDING: { label: "Retry Pending", className: "bg-fedge-gold/15 text-fedge-dark border-fedge-gold/25" },
+  CANCELLED: { label: "Cancelled", className: "bg-red-100 text-red-800 border-red-200" },
+  FDMS_ACCEPTED_WITH_VALIDATION_ERRORS: { label: "Accepted (Warnings)", className: "bg-fedge-gold/20 text-fedge-dark border-fedge-gold/30" },
 };
 
 export function ReceiptStatusBadge({ status }: { status: string | null }) {

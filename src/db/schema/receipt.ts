@@ -61,9 +61,11 @@ export const receipts = pgTable(
         "PROCESSING",
         "SENT",
         "ACCEPTED",
+        "FDMS_ACCEPTED_WITH_VALIDATION_ERRORS",
         "FISCALISED",
         "FAILED",
-        "RETRY",
+        "RETRY_PENDING",
+        "CANCELLED",
       ],
     })
       .notNull()

@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useState } from "react";
+import { DeviceStatusFooter } from "./device-status-footer";
 
 const adminNav = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -22,7 +23,7 @@ const adminNav = [
 ];
 
 const tenantNav = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Profile", href: "/profile", icon: Users },
   { label: "Shops", href: "/shops", icon: Store },
   { label: "Devices", href: "/devices", icon: Smartphone },
@@ -79,6 +80,7 @@ export function Sidebar({ mode }: { mode: "admin" | "tenant" }) {
           );
         })}
       </nav>
+      {mode === "tenant" && !collapsed && <DeviceStatusFooter />}
     </aside>
   );
 }

@@ -18,6 +18,10 @@ export interface SubmitReceiptRequest {
     taxes: ReceiptTaxDto[];
     buyer?: BuyerDto;
     signatureData?: SignatureDataDto;
+    receiptDeviceSignature?: {
+      signedData: string;
+      signature: string;
+    };
   };
 }
 
@@ -70,6 +74,11 @@ export interface SubmitReceiptResponse {
   SignatureHash?: string;
   SignatureThumbprint?: string;
   TimeStamp?: string;
+  operationID?: string;
+  receiptID?: number;
+  serverDate?: string;
+  receiptServerSignature?: { hash?: string; signature?: string; certificateThumbprint?: string };
+  validationErrors?: Array<{ validationErrorColor?: string; [key: string]: unknown }>;
 }
 
 export async function submitReceipt(
@@ -88,6 +97,6 @@ export async function submitReceipt(
     deviceModelVersion,
     certificatePem,
     privateKeyPem,
-    body: request,
+    body: { Receipt: request.receipt },
   });
 }
