@@ -78,6 +78,7 @@ export interface GetStatusResponse {
   fiscalDayStatus?: string;
   fiscalDayReconciliationMode?: string;
   fiscalDayServerSignature?: FiscalDayServerSignature;
+  fiscalDayDeviceSignature?: FiscalDayServerSignature;
   fiscalDayClosed?: string;
   fiscalDayCounter?: FiscalCounterEntry[];
   lastReceiptGlobalNo?: number;
@@ -92,10 +93,8 @@ export interface CertificateResponse {
 }
 
 export interface OpenDayRequest {
-  ReceiptNo: number;
-  OpenDate: string;
-  OpenTime: string;
-  OperatorId?: string;
+  receiptCounter: number;
+  fiscalDayOpened: string;
   ReconciliationMode?: string;
 }
 
@@ -107,10 +106,11 @@ export interface OpenDayResponse {
 }
 
 export interface CloseDayRequest {
-  ReceiptNo: number;
-  CloseDate: string;
-  CloseTime: string;
-  OperatorId?: string;
+  receiptCounter: number;
+  fiscalDayNo: number;
+  fiscalDayCounters: FiscalCounterEntry[];
+  fiscalDayDeviceSignature: FiscalDayServerSignature;
+  fiscalDayClosed: string;
   ReconciliationMode?: string;
 }
 

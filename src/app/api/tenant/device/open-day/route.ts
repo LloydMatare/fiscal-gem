@@ -69,9 +69,8 @@ export async function POST(req: NextRequest) {
       device.certificate,
       privateKeyPem,
       {
-        ReceiptNo: fiscalDayNo,
-        OpenDate: now.toISOString().split("T")[0],
-        OpenTime: now.toTimeString().split(" ")[0],
+        receiptCounter: fiscalDayNo,
+        fiscalDayOpened: now.toISOString().replace(/\.\d{3}Z$/, ""),
         ReconciliationMode: "STANDARD",
       }
     );
@@ -89,7 +88,7 @@ export async function POST(req: NextRequest) {
 
     return apiSuccess({
       operationID: result.OperationId,
-      fiscalDayNo: result.ReceiptNo || fiscalDayNo,
+      fiscalDayNo: (result as any).receiptNo || result.ReceiptNo || fiscalDayNo,
     });
   } catch (error: any) {
     return apiError({

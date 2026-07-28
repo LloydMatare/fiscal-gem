@@ -54,13 +54,10 @@ export async function POST(
       device.certificate,
       privateKeyPem,
       {
-        ReceiptNo: fiscalDayNo,
-        OpenDate: (dayRequest?.fiscalDayOpened ? new Date(dayRequest.fiscalDayOpened) : now)
+        receiptCounter: fiscalDayNo,
+        fiscalDayOpened: (dayRequest?.fiscalDayOpened ? new Date(dayRequest.fiscalDayOpened) : now)
           .toISOString()
-          .split("T")[0],
-        OpenTime: (dayRequest?.fiscalDayOpened ? new Date(dayRequest.fiscalDayOpened) : now)
-          .toTimeString()
-          .split(" ")[0],
+          .replace(/\.\d{3}Z$/, ""),
         ReconciliationMode: "STANDARD",
       }
     );
@@ -78,7 +75,7 @@ export async function POST(
 
     return apiSuccess({
       operationID: result.OperationId,
-      fiscalDayNo: result.ReceiptNo || fiscalDayNo,
+      fiscalDayNo: (result as any).receiptNo || result.ReceiptNo || fiscalDayNo,
     });
   } catch (error: any) {
     return apiError({

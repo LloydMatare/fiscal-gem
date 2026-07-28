@@ -32,6 +32,16 @@ interface DeviceStatusData {
     receiptQuantity?: number;
     receiptTotalAmount?: number;
   }>;
+  fiscalDayServerSignature?: {
+    hash?: string;
+    signature?: string;
+    certificateThumbprint?: string;
+  };
+  fiscalDayDeviceSignature?: {
+    hash?: string;
+    signature?: string;
+    certificateThumbprint?: string;
+  };
 }
 
 interface DeviceStatusButtonProps {

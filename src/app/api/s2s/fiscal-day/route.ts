@@ -70,9 +70,8 @@ export async function POST(req: NextRequest) {
           certificatePem,
           privateKeyPem,
           {
-            ReceiptNo: fiscalDayNo || 1,
-            OpenDate: now.toISOString().split("T")[0],
-            OpenTime: now.toTimeString().split(" ")[0],
+            receiptCounter: fiscalDayNo || 1,
+            fiscalDayOpened: now.toISOString().replace(/\.\d{3}Z$/, ""),
             ReconciliationMode: "STANDARD",
           }
         );

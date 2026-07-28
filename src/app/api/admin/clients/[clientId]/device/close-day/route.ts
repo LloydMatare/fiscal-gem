@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { devices, fiscalDays } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { requireAdmin } from "@/lib/tenant";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { closeDay } from "@/integration/zimra/device";
+import { closeDay, getDeviceStatus } from "@/integration/zimra/device";
 import { downloadFileAsText } from "@/services/certificate";
 
 // POST /admin/clients/[clientId]/device/close-day
@@ -47,17 +47,27 @@ export async function POST(
     const now = new Date();
     const closeDate = fiscalDayClosed ? new Date(fiscalDayClosed) : now;
 
-    // Find the latest open fiscal day for this device
-    const openDay = await db.query.fiscalDays.findFirst({
+    // Find the latest open (or close-failed) fiscal day for this device
+    const fiscalDay = await db.query.fiscalDays.findFirst({
       where: and(
         eq(fiscalDays.clientId, clientId),
         eq(fiscalDays.deviceId, device.id),
-        eq(fiscalDays.status, "OPENED")
+        inArray(fiscalDays.status, ["OPENED", "CLOSE_INITIATED", "CLOSE_FAILED"])
       ),
       orderBy: (fiscalDays, { desc }) => [desc(fiscalDays.fiscalDayNo)],
     });
 
-    const dayNo = fiscalDayNo || openDay?.fiscalDayNo || 1;
+    // Query device status to get fiscal day counters and device signature
+    const status = await getDeviceStatus(
+      deviceID,
+      deviceModelName || device.deviceModelName || "FiscalEdge",
+      deviceModelVersion || device.deviceModelVersion || "1.0.0",
+      device.certificate,
+      privateKeyPem
+    );
+
+    const dayNo = fiscalDayNo || fiscalDay?.fiscalDayNo || status.lastFiscalDayNo || 1;
+    const deviceSignature = status.fiscalDayDeviceSignature || status.fiscalDayServerSignature;
 
     const result = await closeDay(
       deviceID,
@@ -66,15 +76,17 @@ export async function POST(
       device.certificate,
       privateKeyPem,
       {
-        ReceiptNo: dayNo,
-        CloseDate: closeDate.toISOString().split("T")[0],
-        CloseTime: closeDate.toTimeString().split(" ")[0],
+        receiptCounter: fiscalDay?.receiptCounter ?? 0,
+        fiscalDayNo: dayNo,
+        fiscalDayCounters: status.fiscalDayCounter ?? [],
+        fiscalDayDeviceSignature: deviceSignature ?? { hash: "", signature: "" },
+        fiscalDayClosed: closeDate.toISOString().replace(/\.\d{3}Z$/, ""),
         ReconciliationMode: "STANDARD",
       }
     );
 
     // Update the fiscal day record
-    if (openDay) {
+    if (fiscalDay) {
       await db
         .update(fiscalDays)
         .set({
@@ -85,7 +97,7 @@ export async function POST(
           fiscalDayDeviceSignatureHash: result.CloseFiscalDaySignatureHash,
           fiscalDayDeviceSignature: result.CloseFiscalDaySignature,
         })
-        .where(eq(fiscalDays.id, openDay.id));
+        .where(eq(fiscalDays.id, fiscalDay.id));
     }
 
     return apiSuccess({

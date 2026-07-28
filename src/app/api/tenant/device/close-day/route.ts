@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { devices, fiscalDays } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireTenant } from "@/lib/tenant";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { closeDay } from "@/integration/zimra/device";
+import { closeDay, getDeviceStatus } from "@/integration/zimra/device";
 import { downloadFileAsText } from "@/services/certificate";
 
 // POST /tenant/device/close-day
@@ -39,20 +39,31 @@ export async function POST(req: NextRequest) {
       return apiError({ statusCode: 400, message: "Device private key not found" });
     }
 
-    const openFiscalDay = await db.query.fiscalDays.findFirst({
+    const fiscalDay = await db.query.fiscalDays.findFirst({
       where: and(
         eq(fiscalDays.clientId, clientId),
         eq(fiscalDays.deviceId, device.id),
-        eq(fiscalDays.status, "OPENED")
+        inArray(fiscalDays.status, ["OPENED", "CLOSE_INITIATED", "CLOSE_FAILED"])
       ),
       orderBy: [desc(fiscalDays.fiscalDayNo)],
     });
 
-    if (!openFiscalDay) {
+    if (!fiscalDay) {
       return apiError({ statusCode: 400, message: "No open fiscal day to close" });
     }
 
     const now = new Date();
+
+    // Query device status to get fiscal day counters and device signature
+    const status = await getDeviceStatus(
+      deviceId,
+      device.deviceModelName || "FiscalEdge",
+      device.deviceModelVersion || "1.0.0",
+      device.certificate,
+      privateKeyPem
+    );
+
+    const deviceSignature = status.fiscalDayDeviceSignature || status.fiscalDayServerSignature;
 
     const result = await closeDay(
       deviceId,
@@ -61,9 +72,11 @@ export async function POST(req: NextRequest) {
       device.certificate,
       privateKeyPem,
       {
-        ReceiptNo: openFiscalDay.fiscalDayNo,
-        CloseDate: now.toISOString().split("T")[0],
-        CloseTime: now.toTimeString().split(" ")[0],
+        receiptCounter: fiscalDay.receiptCounter ?? 0,
+        fiscalDayNo: fiscalDay.fiscalDayNo,
+        fiscalDayCounters: status.fiscalDayCounter ?? [],
+        fiscalDayDeviceSignature: deviceSignature ?? { hash: "", signature: "" },
+        fiscalDayClosed: now.toISOString().replace(/\.\d{3}Z$/, ""),
         ReconciliationMode: "STANDARD",
       }
     );
@@ -79,11 +92,11 @@ export async function POST(req: NextRequest) {
         fiscalDayDeviceSignature: result.CloseFiscalDaySignature,
         lastModifiedBy: ctx.userId,
       })
-      .where(eq(fiscalDays.id, openFiscalDay.id));
+      .where(eq(fiscalDays.id, fiscalDay.id));
 
     return apiSuccess({
       operationID: result.OperationId,
-      fiscalDayNo: openFiscalDay.fiscalDayNo,
+      fiscalDayNo: fiscalDay.fiscalDayNo,
     });
   } catch (error: any) {
     return apiError({
