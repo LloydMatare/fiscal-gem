@@ -278,7 +278,7 @@ export async function POST(
       ? fdmsValidationErrors?.some((e: any) => e.validationErrorColor === "Red")
         ? "FDMS_ACCEPTED_WITH_VALIDATION_ERRORS"
         : "FISCALISED"
-      : "PENDING";
+      : "SENT";
 
     // Save receipt to DB
     const [receipt] = await db

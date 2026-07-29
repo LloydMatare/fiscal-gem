@@ -52,7 +52,7 @@ export function RevenueChart({ data }: { data: DailyRevenue[] }) {
                   borderRadius: "8px",
                   fontSize: "12px",
                 }}
-                formatter={(value: number) => [formatCurrency(value), "Revenue"]}
+                formatter={(value: any) => [formatCurrency(typeof value === "number" ? value : 0), "Revenue"]}
               />
               <Line
                 type="monotone"
