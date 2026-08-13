@@ -52,10 +52,11 @@ interface DeviceConfigData {
 }
 
 interface DeviceConfigButtonProps {
-  clientId: string;
+  clientId?: string;
   deviceId: number;
   deviceModelName?: string | null;
   deviceModelVersion?: string | null;
+  endpoint?: string;
 }
 
 export function DeviceConfigButton({
@@ -63,6 +64,7 @@ export function DeviceConfigButton({
   deviceId,
   deviceModelName,
   deviceModelVersion,
+  endpoint,
 }: DeviceConfigButtonProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -71,18 +73,17 @@ export function DeviceConfigButton({
   const fetchConfig = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/admin/clients/${clientId}/device/config`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            deviceID: deviceId,
-            deviceModelName: deviceModelName || "FiscalEdge",
-            deviceModelVersion: deviceModelVersion || "1.0.0",
-          }),
-        }
-      );
+      const url =
+        endpoint || `/api/admin/clients/${clientId}/device/config`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceID: deviceId,
+          deviceModelName: deviceModelName || "FiscalEdge",
+          deviceModelVersion: deviceModelVersion || "1.0.0",
+        }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to fetch config");
       setConfig(data.data || data);

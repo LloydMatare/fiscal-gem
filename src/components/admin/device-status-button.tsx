@@ -45,10 +45,12 @@ interface DeviceStatusData {
 }
 
 interface DeviceStatusButtonProps {
-  clientId: string;
+  clientId?: string;
   deviceId: number;
   deviceModelName?: string | null;
   deviceModelVersion?: string | null;
+  endpoint?: string;
+  onSuccess?: () => void;
 }
 
 export function DeviceStatusButton({
@@ -56,6 +58,8 @@ export function DeviceStatusButton({
   deviceId,
   deviceModelName,
   deviceModelVersion,
+  endpoint,
+  onSuccess,
 }: DeviceStatusButtonProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -64,22 +68,22 @@ export function DeviceStatusButton({
   const fetchStatus = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/admin/clients/${clientId}/device/status`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            deviceID: deviceId,
-            deviceModelName: deviceModelName || "FiscalEdge",
-            deviceModelVersion: deviceModelVersion || "1.0.0",
-          }),
-        }
-      );
+      const url =
+        endpoint || `/api/admin/clients/${clientId}/device/status`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceID: deviceId,
+          deviceModelName: deviceModelName || "FiscalEdge",
+          deviceModelVersion: deviceModelVersion || "1.0.0",
+        }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to fetch status");
       setStatus(data.data || data);
       setOpen(true);
+      onSuccess?.();
     } catch (e: any) {
       toast.error(e.message || "Failed to fetch device status");
     } finally {

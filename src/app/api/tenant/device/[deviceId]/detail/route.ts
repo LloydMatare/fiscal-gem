@@ -6,6 +6,7 @@ import { requireTenant } from "@/lib/tenant";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { getDeviceStatus, getDeviceConfig } from "@/integration/zimra/device";
 import { downloadFileAsText } from "@/services/certificate";
+import { syncFiscalDayFromZimra } from "@/services/fiscal-day-sync";
 
 // GET /tenant/device/[deviceId]/detail
 export async function GET(
@@ -24,17 +25,17 @@ export async function GET(
       return apiError({ statusCode: 404, message: "Device not found" });
     }
 
-    let openFiscalDay = await db.query.fiscalDays.findFirst({
-      where: and(
-        eq(fiscalDays.clientId, clientId),
-        eq(fiscalDays.deviceId, device.id),
-        eq(fiscalDays.status, "OPENED")
-      ),
-      orderBy: [desc(fiscalDays.fiscalDayNo)],
-    });
-
     let zimraStatus: any = null;
     let zimraConfig: any = null;
+    let openFiscalDay: typeof fiscalDays.$inferSelect | null =
+      (await db.query.fiscalDays.findFirst({
+        where: and(
+          eq(fiscalDays.clientId, clientId),
+          eq(fiscalDays.deviceId, device.id),
+          eq(fiscalDays.status, "OPENED")
+        ),
+        orderBy: [desc(fiscalDays.fiscalDayNo)],
+      })) ?? null;
 
     if (device.certificate && device.keyMaterialUrls && device.deviceId) {
       try {
@@ -61,24 +62,15 @@ export async function GET(
         if (status.status === "fulfilled") zimraStatus = status.value;
         if (config.status === "fulfilled") zimraConfig = config.value;
 
-        // Sync fiscal day from ZIMRA if open there but not in DB
-        if (zimraStatus?.fiscalDayStatus === "FiscalDayOpened" && zimraStatus?.lastFiscalDayNo && !openFiscalDay) {
-          const now = new Date();
-          const [synced] = await db
-            .insert(fiscalDays)
-            .values({
-              clientId,
-              deviceId: device.id,
-              fiscalDayNo: zimraStatus.lastFiscalDayNo,
-              fiscalDayOpened: now,
-              status: "OPENED",
-              openOperationId: zimraStatus.operationID || null,
-              fdmsStatusResponseJson: JSON.stringify(zimraStatus),
-              createdBy: ctx.userId,
-            })
-            .returning();
-          openFiscalDay = synced;
-        }
+        // Reconcile the locally-tracked open fiscal day with ZIMRA's
+        // authoritative status (inserts an open day if ZIMRA has one we are
+        // missing, and closes ours when ZIMRA reports the day as closed).
+        openFiscalDay = await syncFiscalDayFromZimra({
+          clientId,
+          deviceDbId: device.id,
+          zimraStatus,
+          userId: ctx.userId,
+        });
       } catch (e) {
         console.warn("Could not fetch ZIMRA status/config:", e);
       }

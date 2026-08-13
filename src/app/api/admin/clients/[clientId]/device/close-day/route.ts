@@ -6,6 +6,11 @@ import { requireAdmin } from "@/lib/tenant";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { closeDay, getDeviceStatus } from "@/integration/zimra/device";
 import { downloadFileAsText } from "@/services/certificate";
+import {
+  buildFiscalDayCounters,
+  buildFiscalDayDeviceSignature,
+  loadFiscalDayReceiptPayloads,
+} from "@/services/fiscal-counters";
 
 // POST /admin/clients/[clientId]/device/close-day
 export async function POST(
@@ -67,7 +72,27 @@ export async function POST(
     );
 
     const dayNo = fiscalDayNo || fiscalDay?.fiscalDayNo || status.lastFiscalDayNo || 1;
-    const deviceSignature = status.fiscalDayDeviceSignature || status.fiscalDayServerSignature;
+
+    // Compute the section-6 fiscal day counters locally from the receipts
+    // issued during this fiscal day (ZIMRA's GetStatus returns them empty for
+    // days closed without counters). Spec requires the device to send them.
+    const receiptPayloads = await loadFiscalDayReceiptPayloads({
+      clientId,
+      deviceUuid: device.id,
+      fiscalDayNo: dayNo,
+    });
+    const fiscalDayCounters = buildFiscalDayCounters(receiptPayloads);
+
+    // Spec 13.3.1: the device signs deviceID || fiscalDayNo || fiscalDayDate ||
+    // fiscalDayCounters with its private key. GetStatus returns no device
+    // signature for an open fiscal day, so build it locally.
+    const fiscalDayDeviceSignature = buildFiscalDayDeviceSignature({
+      deviceID,
+      fiscalDayNo: dayNo,
+      fiscalDayOpened: fiscalDay?.fiscalDayOpened ?? now,
+      fiscalDayCounters,
+      privateKeyPem,
+    });
 
     const result = await closeDay(
       deviceID,
@@ -78,8 +103,8 @@ export async function POST(
       {
         receiptCounter: fiscalDay?.receiptCounter ?? 0,
         fiscalDayNo: dayNo,
-        fiscalDayCounters: status.fiscalDayCounter ?? [],
-        fiscalDayDeviceSignature: deviceSignature ?? { hash: "", signature: "" },
+        fiscalDayCounters,
+        fiscalDayDeviceSignature,
         fiscalDayClosed: closeDate.toISOString().replace(/\.\d{3}Z$/, ""),
         ReconciliationMode: "STANDARD",
       }
@@ -94,6 +119,7 @@ export async function POST(
           fiscalDayClosed: closeDate,
           closeOperationId: result.OperationId,
           fdmsCloseResponseJson: JSON.stringify(result),
+          fiscalDayCountersJson: JSON.stringify(fiscalDayCounters),
           fiscalDayDeviceSignatureHash: result.CloseFiscalDaySignatureHash,
           fiscalDayDeviceSignature: result.CloseFiscalDaySignature,
         })

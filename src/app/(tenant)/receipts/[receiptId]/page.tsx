@@ -6,6 +6,7 @@ import { receipts, devices } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptStatusBadge } from "@/components/status-badge";
+import { PdfReceiptDownloadButton } from "@/components/receipt/pdf-receipt-download-button";
 
 export default async function ReceiptDetailPage({
   params,
@@ -39,6 +40,46 @@ export default async function ReceiptDetailPage({
   const payments = receiptData.receiptPayments || receiptData.payments || [];
   const buyer = receiptData.buyerData || receiptData.buyer || null;
 
+  // Pass minimal data to download button - it will build the full PDF client-side
+  const receiptForPdf = {
+    id: receipt.id,
+    clientId: receipt.clientId,
+    deviceId: receipt.deviceId,
+    shopId: receipt.shopId,
+    fiscalDayNo: receipt.fiscalDayNo,
+    receiptGlobalNo: receipt.receiptGlobalNo,
+    receiptCounter: receipt.receiptCounter,
+    receiptType: receipt.receiptType,
+    invoiceNo: receipt.invoiceNo,
+    externalReference: receipt.externalReference,
+    receiptNumber: receipt.receiptNumber,
+    fiscalPayloadJson: receipt.fiscalPayloadJson,
+    fdmsResponseJson: receipt.fdmsResponseJson,
+    fdmsServerSignatureHash: receipt.fdmsServerSignatureHash,
+    fdmsServerSignature: receipt.fdmsServerSignature,
+    status: receipt.status,
+    receivedAt: receipt.receivedAt?.toISOString() || null,
+    fiscalisedAt: receipt.fiscalisedAt?.toISOString() || null,
+  };
+
+  const deviceForPdf = {
+    deviceId: device?.deviceId ?? null,
+    serialNumber: device?.serialNumber ?? null,
+    deviceModelName: device?.deviceModelName ?? null,
+  };
+
+  // Build deviceConfig from client data as fallback for seller info
+  const deviceConfig = {
+    taxpayerName: client.name || "",
+    taxpayerTradeName: client.name || "",
+    taxpayerTIN: client.taxId || "",
+    taxpayerVATNumber: "",
+    deviceBranchName: "",
+    deviceBranchAddress: "",
+    deviceBranchContacts: { email: "", phoneNo: "" },
+    qrUrl: "https://fdmstest.zimra.co.zw",
+  };
+
   return (
     <div>
       <PageHeader
@@ -49,7 +90,14 @@ export default async function ReceiptDetailPage({
           { label: `#${receipt.receiptGlobalNo}`, href: "#" },
         ]}
       >
-        <ReceiptStatusBadge status={receipt.status} />
+        <div className="flex items-center gap-2">
+          <ReceiptStatusBadge status={receipt.status} />
+          <PdfReceiptDownloadButton
+            receipt={receiptForPdf}
+            device={deviceForPdf}
+            deviceConfig={deviceConfig}
+          />
+        </div>
       </PageHeader>
 
       <div className="grid gap-6 md:grid-cols-2">

@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { clients, devices } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { clients, devices, receipts } from "@/db/schema";
+import { eq, and, desc } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { SubmitReceiptButton } from "@/components/admin/submit-receipt-button";
@@ -25,6 +25,26 @@ export default async function AdminReceiptsPage({
     where: eq(devices.clientId, clientId),
   });
 
+  // Compute next invoice number from previous receipts for today's date
+  let nextInvoiceNo: string | undefined;
+  if (device?.deviceId != null) {
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const todayPrefix = `INV-${device.deviceId}-${todayStr}-`;
+    const lastReceipt = await db.query.receipts.findFirst({
+      where: and(
+        eq(receipts.clientId, clientId),
+        eq(receipts.deviceId, device.id)
+      ),
+      orderBy: [desc(receipts.invoiceNo)],
+    });
+    const lastInvoice = lastReceipt?.invoiceNo || "";
+    const match = lastInvoice.startsWith(todayPrefix)
+      ? lastInvoice.match(/(\d+)$/)
+      : null;
+    const nextSeq = match ? Number(match[1]) + 1 : 1;
+    nextInvoiceNo = `${todayPrefix}${String(nextSeq).padStart(4, "0")}`;
+  }
+
   return (
     <div>
       <PageHeader
@@ -42,6 +62,7 @@ export default async function AdminReceiptsPage({
             deviceId={device.deviceId}
             deviceModelName={device.deviceModelName}
             deviceModelVersion={device.deviceModelVersion}
+            nextInvoiceNo={nextInvoiceNo}
           />
         )}
       </PageHeader>

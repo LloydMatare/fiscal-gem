@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ReceiptStatusBadge } from "@/components/status-badge";
+import { DeviceStatusButton } from "@/components/admin/device-status-button";
+import { DeviceConfigButton } from "@/components/admin/device-config-button";
 import { Lock, Unlock, RefreshCw, Loader2 } from "lucide-react";
 
 interface DeviceInfo {
@@ -74,8 +76,8 @@ export default function DeviceDetailPage() {
   const [actionLoading, setActionLoading] = useState<"open" | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchData() {
-    setLoading(true);
+  async function fetchData(silent = false) {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const detailRes = await fetch(`/api/tenant/device/${deviceUuid}/detail`);
@@ -90,7 +92,7 @@ export default function DeviceDetailPage() {
     } catch {
       setError("Failed to load device details");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -170,7 +172,20 @@ export default function DeviceDetailPage() {
           {hasOpenDay && (
             <Badge variant="default" className="bg-green-600">Day #{fiscalDay.fiscalDayNo} Open</Badge>
           )}
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+          <DeviceStatusButton
+            endpoint="/api/tenant/device/status"
+            deviceId={device.deviceId!}
+            deviceModelName={device.deviceModelName}
+            deviceModelVersion={device.deviceModelVersion}
+            onSuccess={() => fetchData(true)}
+          />
+          <DeviceConfigButton
+            endpoint="/api/tenant/device/config"
+            deviceId={device.deviceId!}
+            deviceModelName={device.deviceModelName}
+            deviceModelVersion={device.deviceModelVersion}
+          />
+          <Button variant="outline" size="sm" onClick={() => fetchData()} disabled={loading}>
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>

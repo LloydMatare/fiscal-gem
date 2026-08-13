@@ -38,6 +38,7 @@ interface SubmitReceiptButtonProps {
   deviceId: number;
   deviceModelName?: string | null;
   deviceModelVersion?: string | null;
+  nextInvoiceNo?: string;
 }
 
 export function SubmitReceiptButton({
@@ -45,12 +46,16 @@ export function SubmitReceiptButton({
   deviceId,
   deviceModelName,
   deviceModelVersion,
+  nextInvoiceNo,
 }: SubmitReceiptButtonProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fiscalDayStatus, setFiscalDayStatus] = useState<{ hasFiscalDay: boolean; fiscalDayNo?: number } | null>(null);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [form, setForm] = useState({
-    invoiceNo: "",
+    invoiceNo: nextInvoiceNo || "",
     receiptType: "FISCALINVOICE",
     operatorId: "ADMIN",
     fiscalDayNo: "",
@@ -78,7 +83,49 @@ export function SubmitReceiptButton({
     0
   );
 
+  const handleOpen = () => {
+    const invoiceNo =
+      nextInvoiceNo ||
+      (() => {
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+        return `INV-${deviceId}-${today}-0001`;
+      })();
+    setForm((f) => ({ ...f, invoiceNo }));
+    setSelectedCustomerId("");
+    setOpen(true);
+    // Load saved customers
+    fetch(`/api/admin/clients/${clientId}/customers?limit=100`)
+      .then((r) => r.json())
+      .then((res) => setCustomers(res.data || []))
+      .catch(() => setCustomers([]));
+
+    // Check fiscal day status
+    fetch(`/api/admin/clients/${clientId}/device/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceID: deviceId,
+        deviceModelName: deviceModelName || "FiscalEdge",
+        deviceModelVersion: deviceModelVersion || "1.0.0",
+      }),
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        const status = res.data || res;
+        setFiscalDayStatus({
+          hasFiscalDay: status?.fiscalDayStatus === "FiscalDayOpened",
+          fiscalDayNo: status?.lastFiscalDayNo,
+        });
+      })
+      .catch(() => setFiscalDayStatus({ hasFiscalDay: false }));
+  };
+
   const handleSubmit = async () => {
+    if (fiscalDayStatus && !fiscalDayStatus.hasFiscalDay) {
+      toast.error("No open fiscal day. Open a fiscal day first from the Devices page.");
+      return;
+    }
+
     setLoading(true);
     try {
       const receiptLines = lines.map((l, i) => ({
@@ -148,7 +195,21 @@ export function SubmitReceiptButton({
       );
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to submit receipt");
+      if (!res.ok) {
+        const message = data.error?.message || data.message || "Failed to submit receipt";
+        const rawErrors = Array.isArray(data.error?.errors)
+          ? (data.error.errors as Array<{ validationErrorCode?: string; validationErrorColor?: string; message?: string }>)
+          : [];
+        const detail = rawErrors.length
+          ? rawErrors
+              .map(
+                (e) =>
+                  `${e.validationErrorCode || "ERROR"} (${e.validationErrorColor || "Red"}): ${e.message}`
+              )
+              .join(" • ")
+          : "";
+        throw new Error(detail ? `${message} — ${detail}` : message);
+      }
 
       toast.success(
         `Receipt #${data.data?.fdmsResponse?.ReceiptGlobalNo || "?"} fiscalised`
@@ -166,7 +227,7 @@ export function SubmitReceiptButton({
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="outline" size="sm" onClick={handleOpen}>
         <Plus className="h-4 w-4 mr-1" /> Submit Receipt
       </Button>
 
@@ -177,6 +238,18 @@ export function SubmitReceiptButton({
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {/* Fiscal Day Status Warning */}
+            {fiscalDayStatus && !fiscalDayStatus.hasFiscalDay && (
+              <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-800">
+                <strong>No open fiscal day.</strong> You must open a fiscal day before submitting receipts.
+              </div>
+            )}
+            {fiscalDayStatus?.hasFiscalDay && (
+              <div className="rounded-md bg-green-50 border border-green-200 p-3 text-sm text-green-800">
+                Fiscal Day #{fiscalDayStatus.fiscalDayNo} is open.
+              </div>
+            )}
+
             {/* Header */}
             <div className="grid gap-3 md:grid-cols-3">
               <Input
@@ -205,6 +278,49 @@ export function SubmitReceiptButton({
             </div>
 
             {/* Fiscal Day + Buyer */}
+            {customers.length > 0 && (
+              <div className="grid gap-2">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Select Saved Customer
+                </label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                  value={selectedCustomerId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSelectedCustomerId(id);
+                    if (!id) {
+                      setForm((prev) => ({
+                        ...prev,
+                        buyerName: "", buyerTIN: "", buyerAddress: "", buyerPhone: "",
+                      }));
+                      return;
+                    }
+                    const c = customers.find((cu) => cu.id === id);
+                    if (c) {
+                      setForm((prev) => ({
+                        ...prev,
+                        buyerName: c.name || "",
+                        buyerTIN: c.tin || "",
+                        buyerAddress: [c.street, c.city, c.province, c.district]
+                          .filter(Boolean)
+                          .join(", "),
+                        buyerPhone: c.phone || "",
+                      }));
+                    }
+                  }}
+                >
+                  <option value="">-- Enter manually --</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                      {c.tradeName ? ` (${c.tradeName})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="grid gap-3 md:grid-cols-2">
               <Input
                 placeholder="Fiscal Day No (leave blank to auto-detect)"

@@ -8,12 +8,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
+import { useSearchParams } from "next/navigation";
+import { DataTablePagination } from "./data-table-pagination";
 
 export interface Column<T> {
   key: string;
@@ -36,22 +35,21 @@ export function DataTable<T extends Record<string, any>>({
   onRowClick?: (row: T) => void;
   emptyMessage?: string;
 }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [data, setData] = useState<T[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(Number(searchParams.get("page")) || 1);
+  const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [loading, setLoading] = useState(true);
-  const limit = 20;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         page: String(page),
-        limit: String(limit),
+        limit: String(pageSize),
       });
       if (search) params.set("search", search);
 
@@ -65,13 +63,13 @@ export function DataTable<T extends Record<string, any>>({
     } finally {
       setLoading(false);
     }
-  }, [fetchUrl, page, search]);
+  }, [fetchUrl, page, pageSize, search]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const totalPages = Math.ceil(total / limit);
+  const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div className="space-y-4">
@@ -135,31 +133,17 @@ export function DataTable<T extends Record<string, any>>({
         </Table>
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            {total} total · Page {page} of {totalPages}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <DataTablePagination
+        page={page - 1}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        onPageChange={(p) => setPage(p + 1)}
+        onPageSizeChange={(s) => {
+          setPageSize(s);
+          setPage(1);
+        }}
+      />
     </div>
   );
 }

@@ -153,7 +153,7 @@ DeviceModelVersion: ...
     "payments": [...],
     "taxes": [...],
     "buyer": { ... },
-    "signatureData": { "signedData": "...", "signature": "..." }
+    "receiptDeviceSignature": { "hash": "SHA256(canonical §13.2.1 line) base64", "signature": "ECDSA-SHA256 DER base64" }
   }
 }
 ```

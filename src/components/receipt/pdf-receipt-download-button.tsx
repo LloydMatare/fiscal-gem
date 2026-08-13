@@ -6,7 +6,7 @@ import { Download } from "lucide-react";
 import QRCode from "qrcode";
 
 // Inline MD5 implementation (ZIMRA reference)
-function md5(input: string): string {
+function md5(input: string | Uint8Array): string {
   const hex = (b: number): string => b.toString(16).padStart(2, "0");
   const wordsToHex = (a: number, b: number, c: number, d: number) => {
     const toHex = (n: number) => {
@@ -16,7 +16,8 @@ function md5(input: string): string {
     };
     return toHex(a) + toHex(b) + toHex(c) + toHex(d);
   };
-  const bytes = new TextEncoder().encode(input);
+  const bytes =
+    typeof input === "string" ? new TextEncoder().encode(input) : input;
   const msgLen = bytes.length;
   const totalBits = msgLen * 8;
   const padLen =
@@ -310,12 +311,15 @@ async function buildReceiptData(
   const sigBase64 = String(deviceSig.signature ?? "");
 
   // Also try fdmsResponse signature as fallback
-  const fdmsSig = fdmsResponse?.Signature || "";
+  const fdmsSig =
+    fdmsResponse?.receiptServerSignature?.signature ||
+    fdmsResponse?.Signature ||
+    "";
   const signatureB64 = sigBase64 || fdmsSig;
 
-  // Build verification code from hex signature (matches ZIMRA format)
+  // Build verification code per ZIMRA spec: first 16 hex chars of MD5 over the
+  // raw signature bytes (base64-decoded), formatted XXXX-XXXX-XXXX-XXXX.
   let verificationCode = "";
-  let hexSignature = "";
   let receiptQrData = "";
 
   if (signatureB64) {
@@ -325,20 +329,10 @@ async function buildReceiptData(
           .split("")
           .map((c) => c.charCodeAt(0))
       );
-      hexSignature = Array.from(rawBytes)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-      // MD5 of the hex string, first 16 chars uppercase
-      const md5Hash = md5(hexSignature.toUpperCase());
-      receiptQrData = md5Hash.substring(0, 16).toUpperCase();
-      // Full MD5 hash for verification
-      verificationCode = md5Hash.toUpperCase();
-
-      console.log("=== QR Code Debug ===");
-      console.log("Signature (base64):", signatureB64);
-      console.log("Hex:", hexSignature.toUpperCase());
-      console.log("MD5:", verificationCode);
-      console.log("First 16:", receiptQrData);
+      const md5Hex = md5(rawBytes);
+      receiptQrData = md5Hex.substring(0, 16);
+      verificationCode =
+        receiptQrData.match(/.{1,4}/g)?.join("-") || receiptQrData;
     } catch {}
   }
 

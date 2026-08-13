@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { devices } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { devices, receipts } from "@/db/schema";
+import { eq, and, desc } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,25 @@ export default async function DeviceDetailPage({
   });
 
   if (!device) notFound();
+
+  // Compute next invoice number from previous receipts for today's date
+  const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const todayPrefix = `INV-${device.deviceId}-${todayStr}-`;
+
+  const lastReceipt = await db.query.receipts.findFirst({
+    where: and(
+      eq(receipts.clientId, clientId),
+      eq(receipts.deviceId, device.id)
+    ),
+    orderBy: [desc(receipts.invoiceNo)],
+  });
+  let nextInvoiceNo: string;
+  const lastInvoice = lastReceipt?.invoiceNo || "";
+  const match = lastInvoice.startsWith(todayPrefix)
+    ? lastInvoice.match(/(\d+)$/)
+    : null;
+  const nextSeq = match ? Number(match[1]) + 1 : 1;
+  nextInvoiceNo = `${todayPrefix}${String(nextSeq).padStart(4, "0")}`;
 
   return (
     <div>
@@ -56,6 +75,7 @@ export default async function DeviceDetailPage({
             deviceId={device.deviceId!}
             deviceModelName={device.deviceModelName}
             deviceModelVersion={device.deviceModelVersion}
+            nextInvoiceNo={nextInvoiceNo}
           />
           <DeviceActions device={device as any} />
         </div>

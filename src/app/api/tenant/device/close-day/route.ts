@@ -1,11 +1,16 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { devices, fiscalDays } from "@/db/schema";
+import { devices, fiscalDays, receipts } from "@/db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireTenant } from "@/lib/tenant";
 import { apiSuccess, apiError } from "@/lib/api-response";
-import { closeDay, getDeviceStatus } from "@/integration/zimra/device";
+import { closeDay } from "@/integration/zimra/device";
 import { downloadFileAsText } from "@/services/certificate";
+import {
+  buildFiscalDayCounters,
+  buildFiscalDayDeviceSignature,
+  loadFiscalDayReceiptPayloads,
+} from "@/services/fiscal-counters";
 
 // POST /tenant/device/close-day
 export async function POST(req: NextRequest) {
@@ -54,16 +59,43 @@ export async function POST(req: NextRequest) {
 
     const now = new Date();
 
-    // Query device status to get fiscal day counters and device signature
-    const status = await getDeviceStatus(
-      deviceId,
-      device.deviceModelName || "FiscalEdge",
-      device.deviceModelVersion || "1.0.0",
-      device.certificate,
-      privateKeyPem
-    );
+    // receiptCounter must be the counter of the LAST receipt of the open fiscal
+    // day (spec: closeDay "receiptCounter value of last receipt of current
+    // fiscal day"). Fall back to the last recorded receipt when the stored
+    // counter was never updated.
+    let receiptCounter = fiscalDay.receiptCounter ?? 0;
+    if (!receiptCounter) {
+      const lastReceipt = await db.query.receipts.findFirst({
+        where: and(
+          eq(receipts.clientId, clientId),
+          eq(receipts.deviceId, device.id),
+          eq(receipts.fiscalDayNo, fiscalDay.fiscalDayNo)
+        ),
+        orderBy: [desc(receipts.receiptCounter)],
+      });
+      receiptCounter = lastReceipt?.receiptCounter ?? 0;
+    }
 
-    const deviceSignature = status.fiscalDayDeviceSignature || status.fiscalDayServerSignature;
+    // Compute the section-6 fiscal day counters locally from the receipts
+    // issued during this fiscal day (ZIMRA's GetStatus returns them empty for
+    // days closed without counters). Spec requires the device to send them.
+    const receiptPayloads = await loadFiscalDayReceiptPayloads({
+      clientId,
+      deviceUuid: device.id,
+      fiscalDayNo: fiscalDay.fiscalDayNo,
+    });
+    const fiscalDayCounters = buildFiscalDayCounters(receiptPayloads);
+
+    // Spec 13.3.1: the device signs deviceID || fiscalDayNo || fiscalDayDate ||
+    // fiscalDayCounters with its private key. GetStatus returns no device
+    // signature for an open fiscal day, so build it locally.
+    const fiscalDayDeviceSignature = buildFiscalDayDeviceSignature({
+      deviceID: deviceId,
+      fiscalDayNo: fiscalDay.fiscalDayNo,
+      fiscalDayOpened: fiscalDay.fiscalDayOpened,
+      fiscalDayCounters,
+      privateKeyPem,
+    });
 
     const result = await closeDay(
       deviceId,
@@ -72,10 +104,10 @@ export async function POST(req: NextRequest) {
       device.certificate,
       privateKeyPem,
       {
-        receiptCounter: fiscalDay.receiptCounter ?? 0,
+        receiptCounter,
         fiscalDayNo: fiscalDay.fiscalDayNo,
-        fiscalDayCounters: status.fiscalDayCounter ?? [],
-        fiscalDayDeviceSignature: deviceSignature ?? { hash: "", signature: "" },
+        fiscalDayCounters,
+        fiscalDayDeviceSignature,
         fiscalDayClosed: now.toISOString().replace(/\.\d{3}Z$/, ""),
         ReconciliationMode: "STANDARD",
       }
@@ -88,6 +120,7 @@ export async function POST(req: NextRequest) {
         fiscalDayClosed: now,
         closeOperationId: result.OperationId,
         fdmsCloseResponseJson: JSON.stringify(result),
+        fiscalDayCountersJson: JSON.stringify(fiscalDayCounters),
         fiscalDayDeviceSignatureHash: result.CloseFiscalDaySignatureHash,
         fiscalDayDeviceSignature: result.CloseFiscalDaySignature,
         lastModifiedBy: ctx.userId,

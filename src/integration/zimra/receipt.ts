@@ -18,10 +18,7 @@ export interface SubmitReceiptRequest {
     taxes: ReceiptTaxDto[];
     buyer?: BuyerDto;
     signatureData?: SignatureDataDto;
-    receiptDeviceSignature?: {
-      signedData: string;
-      signature: string;
-    };
+    receiptDeviceSignature?: SignatureDataDto;
   };
 }
 
@@ -59,7 +56,7 @@ export interface BuyerDto {
 }
 
 export interface SignatureDataDto {
-  signedData?: string;
+  hash?: string;
   signature?: string;
 }
 

@@ -7,14 +7,12 @@ import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptStatusBadge } from "@/components/status-badge";
 import Link from "next/link";
 import { SubmitReceiptButton } from "./submit-receipt-button";
-import { ReceiptPagination, ReceiptFilter } from "./receipt-pagination";
-
-const PAGE_SIZE = 20;
+import { ReceiptFilter, ReceiptPagination } from "./receipt-pagination";
 
 export default async function ReceiptsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; status?: string }>;
+  searchParams: Promise<{ page?: string; status?: string; size?: string }>;
 }) {
   const resolved = await resolveClient();
   if (!resolved) return <OrgNotConfigured />;
@@ -22,6 +20,7 @@ export default async function ReceiptsPage({
 
   const params = await searchParams;
   const page = Math.max(0, parseInt(params.page || "0"));
+  const pageSize = Math.min(100, Math.max(1, parseInt(params.size || "10")));
   const statusFilter = params.status || undefined;
 
   const conditions = [eq(receipts.clientId, client.id)];
@@ -38,18 +37,14 @@ export default async function ReceiptsPage({
   const receiptList = await db.query.receipts.findMany({
     where: whereClause,
     orderBy: [desc(receipts.receivedAt)],
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    limit: pageSize,
+    offset: page * pageSize,
   });
-
-  const totalPages = Math.ceil(total / PAGE_SIZE);
-
   return (
     <div>
       <PageHeader title="Receipts" description="View and submit fiscal receipts">
         <SubmitReceiptButton />
       </PageHeader>
-
       <ReceiptFilter total={total} />
 
       <div className="rounded-md border">
@@ -82,7 +77,7 @@ export default async function ReceiptsPage({
                       <Link href={href} className="block">{r.externalReference}</Link>
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <Link href={href} className="block">{r.receiptNumber || "—"}</Link>
+                      <Link href={href} className="block">{r.fdmsReceiptId ?? r.receiptNumber ?? "—"}</Link>
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <Link href={href} className="block"><ReceiptStatusBadge status={r.status} /></Link>
@@ -100,7 +95,7 @@ export default async function ReceiptsPage({
         </table>
       </div>
 
-      <ReceiptPagination page={page} totalPages={totalPages} />
+      <ReceiptPagination page={page} total={total} pageSize={pageSize} />
     </div>
   );
 }

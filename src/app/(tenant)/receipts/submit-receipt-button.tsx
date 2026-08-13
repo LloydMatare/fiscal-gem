@@ -35,11 +35,23 @@ interface Customer {
   district: string | null;
 }
 
+interface LocalValidationError {
+  validationErrorCode?: string;
+  validationErrorColor?: string;
+  message?: string;
+  field?: string;
+}
+
+interface SubmitError {
+  message: string;
+  errors?: LocalValidationError[];
+}
+
 export function SubmitReceiptButton() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SubmitError | null>(null);
   const [fiscalDayStatus, setFiscalDayStatus] = useState<{ hasFiscalDay: boolean; fiscalDayNo?: number } | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -68,7 +80,7 @@ export function SubmitReceiptButton() {
   });
 
   const [lines, setLines] = useState<ReceiptLine[]>([
-    { articleName: "", articleCode: "", quantity: 1, unitPrice: 0, taxRate: 15 },
+    { articleName: "", articleCode: "", quantity: 1, unitPrice: 0, taxRate: 15.5 },
   ]);
 
   const [payments, setPayments] = useState<ReceiptPayment[]>([
@@ -94,6 +106,33 @@ export function SubmitReceiptButton() {
           }));
 
           setCustomers(customerRes.data || []);
+
+          // Generate invoice number from previous receipts for today's date
+          if (device?.deviceId) {
+            const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+            const todayPrefix = `INV-${device.deviceId}-${todayStr}-`;
+            fetch(`/api/tenant/receipts?limit=50`)
+              .then((r) => r.json())
+              .then((res) => {
+                const data = res.data || [];
+                const todayInvoices = data
+                  .map((rec: any) => {
+                    const fp = rec.signedFiscalPayload;
+                    return fp?.receipt?.invoiceNo || "";
+                  })
+                  .filter((no: string) => no.startsWith(todayPrefix));
+                let nextSeq = 1;
+                if (todayInvoices.length > 0) {
+                  const seqs = todayInvoices
+                    .map((no: string) => Number((no.match(/(\d+)$/) || [])[1] || 0))
+                    .filter((n: number) => n > 0);
+                  if (seqs.length > 0) nextSeq = Math.max(...seqs) + 1;
+                }
+                const invoiceNo = `${todayPrefix}${String(nextSeq).padStart(4, "0")}`;
+                setForm((prev) => ({ ...prev, invoiceNo }));
+              })
+              .catch(() => {});
+          }
 
           // Check fiscal day status
           if (device?.deviceId) {
@@ -123,7 +162,7 @@ export function SubmitReceiptButton() {
     setError(null);
 
     if (fiscalDayStatus && !fiscalDayStatus.hasFiscalDay) {
-      setError("No open fiscal day. Open a fiscal day first from the Devices page.");
+      setError({ message: "No open fiscal day. Open a fiscal day first from the Devices page." });
       return;
     }
 
@@ -213,7 +252,13 @@ export function SubmitReceiptButton() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || "Failed to submit receipt");
+      if (!res.ok) {
+        const message = data.error?.message || data.message || "Failed to submit receipt";
+        const errors = Array.isArray(data.error?.errors)
+          ? (data.error.errors as LocalValidationError[])
+          : undefined;
+        throw new Error(message, errors ? { cause: { message, errors } as SubmitError } : undefined);
+      }
 
       setOpen(false);
       setForm({
@@ -224,11 +269,16 @@ export function SubmitReceiptButton() {
         buyerStreet: "", buyerHouseNo: "", buyerDistrict: "", receiptNotes: "",
       });
       setSelectedCustomerId("");
-      setLines([{ articleName: "", articleCode: "", quantity: 1, unitPrice: 0, taxRate: 15 }]);
+      setLines([{ articleName: "", articleCode: "", quantity: 1, unitPrice: 0, taxRate: 15.5 }]);
       setPayments([{ paymentType: "Cash", paymentAmount: 0 }]);
       router.refresh();
     } catch (e: any) {
-      setError(e.message || "Failed to submit receipt");
+      const cause = e?.cause;
+      if (cause && typeof cause === "object" && cause.message && Array.isArray(cause.errors)) {
+        setError({ message: cause.message, errors: cause.errors });
+      } else {
+        setError({ message: e?.message || "Failed to submit receipt" });
+      }
     } finally {
       setLoading(false);
     }
@@ -385,7 +435,7 @@ export function SubmitReceiptButton() {
             <div className="border-t pt-3">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-semibold">Receipt Lines</h4>
-                <Button variant="ghost" size="sm" onClick={() => setLines([...lines, { articleName: "", articleCode: "", quantity: 1, unitPrice: 0, taxRate: 15 }])}>
+                <Button variant="ghost" size="sm" onClick={() => setLines([...lines, { articleName: "", articleCode: "", quantity: 1, unitPrice: 0, taxRate: 15.5 }])}>
                   <Plus className="h-3.5 w-3.5 mr-1" /> Add Line
                 </Button>
               </div>
@@ -468,7 +518,24 @@ export function SubmitReceiptButton() {
               </div>
             </div>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && (
+              <div className="text-sm text-red-600">
+                <p className="font-medium">{error.message}</p>
+                {Array.isArray(error.errors) && error.errors.length > 0 && (
+                  <ul className="mt-1 list-disc pl-5 space-y-0.5">
+                    {error.errors.map((err, i) => (
+                      <li key={i}>
+                        <span className="font-semibold">
+                          {err.validationErrorCode || "ERROR"}
+                          {err.validationErrorColor ? ` (${err.validationErrorColor})` : ""}:
+                        </span>{" "}
+                        {err.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex justify-end gap-2 pt-2">

@@ -1,14 +1,14 @@
 import { resolveClient } from "@/lib/tenant";
 import { OrgNotConfigured } from "@/components/layout/org-not-configured";
-import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { shops, devices, agents, receipts } from "@/db/schema";
-import { eq, count, sql, and, gte, desc } from "drizzle-orm";
+import { eq, count, sql, and, gte } from "drizzle-orm";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/cards/stat-card";
 import { Store, Smartphone, Headphones, Receipt, CheckCircle } from "lucide-react";
 import { ReceiptsChart } from "@/components/charts/receipts-chart";
 import { StatusChart } from "@/components/charts/status-chart";
+import { DeviceStatusCard } from "./device-status-card";
 
 export default async function TenantDashboardPage() {
   const resolved = await resolveClient();
@@ -30,6 +30,10 @@ export default async function TenantDashboardPage() {
         .from(receipts)
         .where(and(eq(receipts.clientId, client.id), eq(receipts.status, "FISCALISED"))),
     ]);
+
+  const deviceList = await db.query.devices.findMany({
+    where: eq(devices.clientId, client.id),
+  });
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -69,6 +73,20 @@ export default async function TenantDashboardPage() {
         </div>
         <div className="lg:col-span-3">
           <StatusChart data={statusBreakdown} />
+        </div>
+      </div>
+      <div className="mt-6 grid gap-4 lg:grid-cols-7">
+        <div className="lg:col-span-3">
+          <DeviceStatusCard
+            devices={deviceList.map((d) => ({
+              id: d.id,
+              deviceId: d.deviceId,
+              serialNumber: d.serialNumber,
+              deviceModelName: d.deviceModelName,
+              deviceModelVersion: d.deviceModelVersion,
+              activated: d.activated,
+            }))}
+          />
         </div>
       </div>
     </div>

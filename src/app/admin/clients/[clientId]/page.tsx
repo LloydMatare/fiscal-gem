@@ -1,11 +1,11 @@
 import { db } from "@/db";
-import { clients, shops, devices, receipts } from "@/db/schema";
+import { clients, shops, devices, receipts, customers } from "@/db/schema";
 import { eq, count } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { StatCard } from "@/components/cards/stat-card";
-import { Store, Smartphone, Receipt } from "lucide-react";
+import { Store, Smartphone, Receipt, Users } from "lucide-react";
 import Link from "next/link";
 import { ClientActions } from "@/components/admin/client-actions";
 
@@ -22,10 +22,11 @@ export default async function ClientDetailPage({
 
   if (!client) notFound();
 
-  const [[shopCount], [deviceCount], [receiptCount]] = await Promise.all([
+  const [[shopCount], [deviceCount], [receiptCount], [customerCount]] = await Promise.all([
     db.select({ total: count() }).from(shops).where(eq(shops.clientId, clientId)),
     db.select({ total: count() }).from(devices).where(eq(devices.clientId, clientId)),
     db.select({ total: count() }).from(receipts).where(eq(receipts.clientId, clientId)),
+    db.select({ total: count() }).from(customers).where(eq(customers.clientId, clientId)),
   ]);
 
   return (
@@ -44,7 +45,7 @@ export default async function ClientDetailPage({
         </div>
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
+      <div className="grid gap-4 md:grid-cols-4 mb-6">
         <Link href={`/admin/clients/${clientId}/shops`}>
           <StatCard title="Shops" value={shopCount.total} icon={Store} className="hover:border-primary/50 transition-colors" />
         </Link>
@@ -53,6 +54,9 @@ export default async function ClientDetailPage({
         </Link>
         <Link href={`/admin/clients/${clientId}/receipts`}>
           <StatCard title="Receipts" value={receiptCount.total} icon={Receipt} className="hover:border-primary/50 transition-colors" />
+        </Link>
+        <Link href={`/admin/clients/${clientId}/customers`}>
+          <StatCard title="Customers" value={customerCount.total} icon={Users} className="hover:border-primary/50 transition-colors" />
         </Link>
       </div>
 

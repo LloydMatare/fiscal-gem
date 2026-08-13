@@ -37,6 +37,25 @@ export function apiError(error: unknown) {
     );
   }
 
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as any).message === "string"
+  ) {
+    const err = error as { message: string; statusCode?: number; errors?: unknown[] };
+    return NextResponse.json(
+      {
+        error: {
+          message: err.message,
+          statusCode: err.statusCode || 500,
+          errors: err.errors,
+        },
+      },
+      { status: err.statusCode || 500 }
+    );
+  }
+
   console.error("Unhandled error:", error);
   return NextResponse.json(
     {

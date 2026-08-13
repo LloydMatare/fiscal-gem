@@ -1,9 +1,8 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 
 const STATUSES = [
   "RECEIVED", "VALIDATED", "SIGNED", "QUEUED", "PROCESSING",
@@ -53,10 +52,12 @@ export function ReceiptFilter({
 
 export function ReceiptPagination({
   page,
-  totalPages,
+  total,
+  pageSize,
 }: {
   page: number;
-  totalPages: number;
+  total: number;
+  pageSize: number;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -67,33 +68,23 @@ export function ReceiptPagination({
     router.push(`?${params.toString()}`);
   };
 
+  const changePageSize = (newSize: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("size", String(newSize));
+    params.set("page", "0");
+    router.push(`?${params.toString()}`);
+  };
+
   return (
-    <>
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <span className="text-sm text-muted-foreground">
-            Page {page + 1} of {totalPages}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === 0}
-              onClick={() => goToPage(page - 1)}
-            >
-              <ChevronLeft className="h-4 w-4" /> Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages - 1}
-              onClick={() => goToPage(page + 1)}
-            >
-              Next <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-    </>
+    <DataTablePagination
+      page={page}
+      total={total}
+      pageSize={pageSize}
+      totalPages={Math.ceil(total / pageSize)}
+      onPageChange={goToPage}
+      onPageSizeChange={changePageSize}
+      itemLabel="receipt"
+      itemLabelPlural="receipts"
+    />
   );
 }

@@ -5,10 +5,14 @@ import { eq, and, desc, count as drizzleCount } from "drizzle-orm";
 import { requireAdmin } from "@/lib/tenant";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { validateReceiptSubmit } from "@/lib/receipt-validation";
+import {
+  validateReceiptForZimra,
+  buildLocalValidationContext,
+} from "@/lib/zimra-local-validation";
 import { submitReceipt } from "@/integration/zimra/receipt";
 import { getDeviceStatus } from "@/integration/zimra/device";
 import { downloadFileAsText } from "@/services/certificate";
-import crypto from "crypto";
+import { signReceiptDevice, getReceiptDeviceHash, formatReceiptDateForSignature } from "@/services/signing";
 
 function mapReceiptToSwagger(r: any) {
   let signedFiscalPayload = null;
@@ -176,12 +180,11 @@ export async function POST(
       return apiError({ statusCode: 400, message: "Device private key not found" });
     }
 
-    // Get previous receipt hash for chain
+    // Get previous receipt for the device signature chain
     const lastReceipt = await db.query.receipts.findFirst({
       where: and(eq(receipts.clientId, clientId), eq(receipts.deviceId, device.id)),
       orderBy: [desc(receipts.receiptGlobalNo)],
     });
-    const previousReceiptHash = lastReceipt?.fdmsServerSignatureHash || undefined;
 
     // Get open fiscal day
     const openFiscalDay = await db.query.fiscalDays.findFirst({
@@ -195,6 +198,8 @@ export async function POST(
 
     // Try to get authoritative fiscal day from ZIMRA
     let zimraFiscalDayNo: number | null = null;
+    let zimraFiscalDayStatus: string | null = null;
+    let zimraLastReceiptGlobalNo: number | null = null;
     try {
       const status = await getDeviceStatus(
         deviceIdNum,
@@ -204,23 +209,68 @@ export async function POST(
         privateKeyPem
       );
       zimraFiscalDayNo = status.lastFiscalDayNo ?? null;
+      zimraFiscalDayStatus = status.fiscalDayStatus ?? null;
+      zimraLastReceiptGlobalNo = status.lastReceiptGlobalNo ?? null;
     } catch (e) {
       console.warn("Could not fetch device status for fiscal day:", e);
     }
     const fiscalDayNo = zimraFiscalDayNo || openFiscalDay?.fiscalDayNo || 1;
 
-    // Build receipt numbers
-    const receiptGlobalNo = (lastReceipt?.receiptGlobalNo || 0) + 1;
-    const receiptCounter = (lastReceipt?.receiptCounter || 0) + 1;
+    // Fetch device config for valid tax IDs
+    const { getDeviceConfig } = await import("@/integration/zimra/device");
+    let validTaxIds: Record<number, number> = { 0: 2, 5: 514, 15: 515, 15.5: 515 };
+    let deviceConfig: { taxpayerDayMaxHrs?: number | null; vatNumber?: string | null } | null = null;
+    try {
+      const config = await getDeviceConfig(
+        deviceIdNum,
+        device.deviceModelName || "FiscalEdge",
+        device.deviceModelVersion || "1.0.0",
+        device.certificate!,
+        privateKeyPem
+      );
+      if (config.applicableTaxes?.length) {
+        const taxMap: Record<number, number> = {};
+        for (const tax of config.applicableTaxes) {
+          if (tax.taxID && tax.taxPercent) {
+            taxMap[tax.taxPercent] = tax.taxID;
+          }
+        }
+        if (Object.keys(taxMap).length > 0) {
+          validTaxIds = { ...validTaxIds, ...taxMap };
+        }
+      }
+      deviceConfig = {
+        taxpayerDayMaxHrs: config.taxPayerDayMaxHrs ?? null,
+        vatNumber: config.vatNumber ?? null,
+      };
+    } catch (e) {
+      console.warn("Could not fetch device config for tax IDs:", e);
+    }
+
+    // Build receipt numbers: counter is fiscal-day scoped (resets to 1 on a new
+    // day), global number is ZIMRA-authoritative when available.
+    const lastReceiptInOpenDay = !!(
+      openFiscalDay && lastReceipt && lastReceipt.fiscalDayNo === openFiscalDay.fiscalDayNo
+    );
+    const receiptGlobalNo = (zimraLastReceiptGlobalNo ?? lastReceipt?.receiptGlobalNo ?? 0) + 1;
+    const receiptCounter = lastReceiptInOpenDay
+      ? (lastReceipt?.receiptCounter || 0) + 1
+      : 1;
+
+    // Chain hash is the previous receipt's DEVICE signature hash; omitted for
+    // the first receipt of a fiscal day (counter == 1).
+    const isFirstInFiscalDay = receiptCounter === 1;
+    const previousReceiptHash = lastReceiptInOpenDay
+      ? getReceiptDeviceHash(lastReceipt?.fiscalPayloadJson ?? null)
+      : undefined;
     const now = new Date();
 
     // Build ZIMRA request matching SubmitReceiptRequest interface
     const nowStr = now.toISOString();
 
     // Map tax rate to ZIMRA taxID
-    const taxIdMap: Record<number, number> = { 0: 2, 5: 514, 15: 515, 15.5: 515 };
     const getTaxId = (rate: number) => {
-      if (rate in taxIdMap) return taxIdMap[rate];
+      if (rate in validTaxIds) return validTaxIds[rate];
       if (rate > 0) return 515;
       return 2;
     };
@@ -293,10 +343,10 @@ export async function POST(
         receiptCurrency: (receiptData.receiptCurrency as string) || "USD",
         invoiceNo: (receiptData.invoiceNo as string) || `INV-${receiptGlobalNo}`,
         externalReference: (body.externalReference as string) || `EXT-${Date.now()}`,
-        receiptDate: (receiptData.receiptDate as string) || nowStr,
+        receiptDate: formatReceiptDateForSignature((receiptData.receiptDate as string) || nowStr),
         operatorId: (receiptData.username as string) || (receiptData.operatorId as string) || "ADMIN",
         fiscalDayNo,
-        previousReceiptHash,
+        ...(isFirstInFiscalDay ? {} : { previousReceiptHash }),
         receiptLinesTaxInclusive: receiptData.receiptLinesTaxInclusive !== false,
         receiptLines,
         receiptTaxes,
@@ -310,26 +360,60 @@ export async function POST(
     // Save as RECEIVED first
     const externalRef = (body.externalReference as string) || `EXT-${Date.now()}`;
 
-    // Sign receipt with device ECDSA P-256 private key
+    // Sign the canonical receipt line (spec §13.2.1) with the device ECDSA
+    // P-256 private key. The SignatureData shape ZIMRA expects is
+    // { hash, signature } where hash = SHA-256 of the canonical line.
     const signedPayload: any = { ...zimraRequest };
     try {
-      const receiptJson = JSON.stringify(zimraRequest.receipt);
-
-      const privateKeyObj = crypto.createPrivateKey(privateKeyPem);
-      const sign = crypto.createSign("SHA256");
-      sign.update(receiptJson);
-      sign.end();
-      const derSignature = sign.sign(privateKeyObj);
-
+      const receiptDeviceSignature = signReceiptDevice(
+        {
+          deviceID: deviceIdNum,
+          receiptType: zimraRequest.receipt.receiptType,
+          receiptCurrency: zimraRequest.receipt.receiptCurrency,
+          receiptGlobalNo,
+          receiptDate: zimraRequest.receipt.receiptDate,
+          receiptTotal,
+          receiptTaxes,
+          previousReceiptHash,
+          isFirstInFiscalDay,
+        },
+        privateKeyPem,
+        "der"
+      );
       signedPayload.receipt = {
         ...zimraRequest.receipt,
-        receiptDeviceSignature: {
-          signedData: Buffer.from(receiptJson).toString("base64"),
-          signature: derSignature.toString("base64"),
-        },
+        receiptDeviceSignature,
       };
     } catch (signErr) {
       console.error("Failed to sign receipt:", signErr);
+    }
+
+    // Run local ZIMRA-style validation BEFORE submitting to ZIMRA.
+    const localValidation = await validateReceiptForZimra(
+      signedPayload.receipt,
+      buildLocalValidationContext({
+        validTaxIds,
+        certificatePem: device.certificate ?? undefined,
+        clientId,
+        deviceId: deviceIdNum,
+        fiscalDay: openFiscalDay
+          ? { fiscalDayOpened: openFiscalDay.fiscalDayOpened, fiscalDayNo: openFiscalDay.fiscalDayNo }
+          : null,
+        deviceConfig,
+        lastReceipt,
+        authoritativeFiscalDayNo: zimraFiscalDayNo,
+        authoritativeFiscalDayStatus: zimraFiscalDayStatus,
+        authoritativeLastReceiptGlobalNo: zimraLastReceiptGlobalNo,
+        serverNow: now,
+      })
+    );
+
+    if (!localValidation.valid) {
+      return apiError({
+        statusCode: 400,
+        message: "Receipt failed local validation — not sent to ZIMRA",
+        errors: localValidation.errors,
+      });
     }
     const [savedReceipt] = await db
       .insert(receipts)
@@ -391,7 +475,7 @@ export async function POST(
           fdmsServerSignature: fdmsSignature,
           fdmsServerSignatureThumbprint: fdmsThumbprint,
           status: fdmsOpId && fdmsReceiptId
-            ? fdmsValidationErrors?.some((e: any) => e.validationErrorColor === "Red")
+            ? (fdmsValidationErrors?.length ?? 0) > 0
               ? "FDMS_ACCEPTED_WITH_VALIDATION_ERRORS"
               : "FISCALISED"
             : "FAILED",

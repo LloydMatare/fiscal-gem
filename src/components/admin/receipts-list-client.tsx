@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import { ReceiptStatusBadge } from "@/components/status-badge";
+import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import Link from "next/link";
 
 interface ReceiptItem {
@@ -57,9 +57,8 @@ export function ReceiptsListClient({
   initialPage: number;
   initialStatus?: string;
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(10);
   const [status, setStatus] = useState(initialStatus || "");
   const [data, setData] = useState<ReceiptsPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,7 +67,7 @@ export function ReceiptsListClient({
     setLoading(true);
     const params = new URLSearchParams();
     params.set("page", String(page));
-    params.set("size", "20");
+    params.set("size", String(pageSize));
     if (status) params.set("status", status);
 
     try {
@@ -80,7 +79,7 @@ export function ReceiptsListClient({
     } finally {
       setLoading(false);
     }
-  }, [clientId, page, status]);
+  }, [clientId, page, pageSize, status]);
 
   useEffect(() => {
     fetchReceipts();
@@ -174,28 +173,20 @@ export function ReceiptsListClient({
         </table>
       </div>
 
-      {data && data.totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
-            Page {data.number + 1} of {data.totalPages}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={data.first}
-              className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(data.totalPages - 1, p + 1))}
-              disabled={data.last}
-              className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+      {data && (
+        <DataTablePagination
+          page={data.number}
+          totalPages={data.totalPages}
+          total={data.totalElements}
+          pageSize={data.size}
+          onPageChange={(p) => setPage(p)}
+          onPageSizeChange={(s) => {
+            setPageSize(s);
+            setPage(0);
+          }}
+          itemLabel="receipt"
+          itemLabelPlural="receipts"
+        />
       )}
     </div>
   );
