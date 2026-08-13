@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document tracks the full migration of the **fdms-cloud-platform** (Java 21 / Spring Boot 3.5.7 / Keycloak / PostgreSQL) into **fiscal-gem-api** (Next.js 16 / Clerk / Neon / Drizzle ORM).
+This document tracks the full migration of the **fdms-cloud-platform** (Java 21 / Spring Boot 3.5.7 / Keycloak / PostgreSQL) into **fiscal-gem** (Next.js 16 / Clerk / Neon / Drizzle ORM).
 
 ## Source Project
 
