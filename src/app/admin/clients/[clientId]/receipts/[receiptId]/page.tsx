@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { receipts, devices, clients } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { requireAdminPage } from "@/lib/tenant";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptStatusBadge } from "@/components/status-badge";
 import { ReceiptDeleteButton } from "@/components/admin/receipt-delete-button";
@@ -12,6 +13,7 @@ export default async function ReceiptDetailPage({
 }: {
   params: Promise<{ clientId: string; receiptId: string }>;
 }) {
+  await requireAdminPage();
   const { clientId, receiptId } = await params;
 
   const receipt = await db.query.receipts.findFirst({

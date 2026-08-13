@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { clients, shops, devices, receipts, customers } from "@/db/schema";
 import { eq, count } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { requireAdminPage } from "@/lib/tenant";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { StatCard } from "@/components/cards/stat-card";
@@ -14,6 +15,7 @@ export default async function ClientDetailPage({
 }: {
   params: Promise<{ clientId: string }>;
 }) {
+  await requireAdminPage();
   const { clientId } = await params;
 
   const client = await db.query.clients.findFirst({

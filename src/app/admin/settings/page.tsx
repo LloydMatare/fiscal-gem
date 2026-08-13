@@ -1,9 +1,11 @@
 import { db } from "@/db";
 import { clients } from "@/db/schema";
 import { count, eq } from "drizzle-orm";
+import { requireAdminPage } from "@/lib/tenant";
 import { PageHeader } from "@/components/layout/page-header";
 
 export default async function AdminSettingsPage() {
+  await requireAdminPage();
   const [{ total: totalClients }] = await db
     .select({ total: count() })
     .from(clients);

@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { clients, devices, receipts, agents } from "@/db/schema";
 import { count, sql, gte } from "drizzle-orm";
+import { requireAdminPage } from "@/lib/tenant";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/cards/stat-card";
 import { Users, Smartphone, Headphones, Receipt } from "lucide-react";
@@ -112,6 +113,7 @@ async function getDeviceHealth() {
 }
 
 export default async function AdminDashboardPage() {
+  await requireAdminPage();
   const [stats, dailyReceipts, statusBreakdown, revenue, receiptsPerClient, deviceHealth] =
     await Promise.all([
       getStats(),

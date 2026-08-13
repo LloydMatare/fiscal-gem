@@ -1,7 +1,9 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { clients, userAccounts } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { ApiError } from "@/lib/api-response";
 
 export type TenantContext = {
   userId: string;
@@ -17,7 +19,7 @@ export async function resolveTenantContext(): Promise<TenantContext> {
   const { userId, orgId, orgRole, orgSlug } = await auth();
 
   if (!userId) {
-    throw new Error("Unauthorized");
+    throw new ApiError(401, "Unauthorized");
   }
 
   // Check if this is the system tenant (admin mode) OR any org admin
@@ -49,7 +51,7 @@ export async function resolveTenantContext(): Promise<TenantContext> {
 export async function requireAdmin(): Promise<TenantContext> {
   const ctx = await resolveTenantContext();
   if (!ctx.isSystemMode) {
-    throw new Error("Admin access required");
+    throw new ApiError(403, "Admin access required");
   }
   return ctx;
 }
@@ -60,7 +62,7 @@ export async function requireAdmin(): Promise<TenantContext> {
 export async function requireTenant(): Promise<TenantContext> {
   const ctx = await resolveTenantContext();
   if (!ctx.isTenantMode || !ctx.clientId) {
-    throw new Error("Tenant access required");
+    throw new ApiError(403, "Tenant access required");
   }
   return ctx;
 }
@@ -70,7 +72,7 @@ export async function requireTenant(): Promise<TenantContext> {
  * Returns null if no client is linked.
  */
 export async function resolveClient(): Promise<{ userId: string; orgId: string; client: typeof clients.$inferSelect } | null> {
-  const { userId, orgId } = await auth();
+  const { userId, orgId } = await auth.protect();
   if (!userId || !orgId) return null;
 
   const client = await db.query.clients.findFirst({
@@ -80,6 +82,17 @@ export async function resolveClient(): Promise<{ userId: string; orgId: string; 
   if (!client) return null;
 
   return { userId, orgId, client };
+}
+
+/**
+ * Auth guard for admin pages. Redirects signed-out users to sign-in and
+ * non-admins to the landing page. Replaces the old middleware role check.
+ */
+export async function requireAdminPage(): Promise<void> {
+  const { orgRole } = await auth.protect();
+  if (orgRole !== "org:admin") {
+    redirect("/");
+  }
 }
 
 /**

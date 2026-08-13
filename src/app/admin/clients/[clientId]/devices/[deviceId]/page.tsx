@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { devices, receipts } from "@/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { requireAdminPage } from "@/lib/tenant";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { DeviceActions } from "@/components/admin/device-actions";
@@ -15,6 +16,7 @@ export default async function DeviceDetailPage({
 }: {
   params: Promise<{ clientId: string; deviceId: string }>;
 }) {
+  await requireAdminPage();
   const { clientId, deviceId } = await params;
 
   const device = await db.query.devices.findFirst({

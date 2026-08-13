@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { clients, shops, agents } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { requireAdminPage } from "@/lib/tenant";
 import { PageHeader } from "@/components/layout/page-header";
 import { AgentOnlineIndicator } from "@/components/status-badge";
 import { ShopActions } from "@/components/admin/shop-actions";
@@ -11,6 +12,7 @@ export default async function ShopDetailPage({
 }: {
   params: Promise<{ clientId: string; shopId: string }>;
 }) {
+  await requireAdminPage();
   const { clientId, shopId } = await params;
 
   const [client, shop] = await Promise.all([

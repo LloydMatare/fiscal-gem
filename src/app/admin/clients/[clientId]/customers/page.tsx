@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { clients, customers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { requireAdminPage } from "@/lib/tenant";
 import { PageHeader } from "@/components/layout/page-header";
 import { CreateCustomerButton } from "@/components/admin/create-customer-button";
 import { CustomerDeleteButton } from "@/components/admin/customer-delete-button";
@@ -12,6 +13,7 @@ export default async function AdminCustomersPage({
 }: {
   params: Promise<{ clientId: string }>;
 }) {
+  await requireAdminPage();
   const { clientId } = await params;
 
   const client = await db.query.clients.findFirst({
