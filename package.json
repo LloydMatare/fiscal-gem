@@ -4,12 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "drizzle-kit migrate",
+    "prebuild": "node scripts/migrate-db.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node scripts/migrate-db.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
