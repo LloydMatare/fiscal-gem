@@ -1,3 +1,6 @@
 opencode -s ses_07b38b809ffeDZK3mnUn5opk2Z
 
 opencode -s ses_028f43791ffeHfofC2gR98i9Q6
+
+
+opnecode -s 
